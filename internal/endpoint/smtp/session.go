@@ -557,13 +557,11 @@ func (s *Session) Data(r io.Reader) error {
 			return wrapErr(err)
 		}
 	} else if s.endp.requirePgp {
-		if err := pgp_verify.EnforceEncryption(header, rBody, pgp_verify.Options{
-			MailFrom:   s.mailFrom,
-			Recipients: s.rcpts,
-		}); err != nil {
+		if err := pgp_verify.EnforcePolicy(header, rBody, s.endp.inboundPGPPolicy(s.mailFrom, s.rcpts)); err != nil {
 			s.log.Msg("REJECTED: unencrypted message", "msg_id", s.msgMeta.ID)
 			return wrapErr(err)
 		}
+		s.msgMeta.PGPPolicyVerified = true
 	}
 
 	if err := s.checkRoutingLoops(header); err != nil {
@@ -645,10 +643,7 @@ func (s *Session) LMTPData(r io.Reader, sc smtp.StatusCollector) error {
 	// so a chatmail MX configured with `require_pgp yes` rejects
 	// cleartext uniformly across SMTP and LMTP.
 	if s.endp.requirePgp {
-		if err := pgp_verify.EnforceEncryption(header, rBody, pgp_verify.Options{
-			MailFrom:   s.mailFrom,
-			Recipients: s.rcpts,
-		}); err != nil {
+		if err := pgp_verify.EnforcePolicy(header, rBody, s.endp.inboundPGPPolicy(s.mailFrom, s.rcpts)); err != nil {
 			s.log.Msg("REJECTED: unencrypted message (LMTP)", "msg_id", s.msgMeta.ID)
 			wrapped := wrapErr(err)
 			for _, rcpt := range s.rcpts {
@@ -656,6 +651,7 @@ func (s *Session) LMTPData(r io.Reader, sc smtp.StatusCollector) error {
 			}
 			return nil
 		}
+		s.msgMeta.PGPPolicyVerified = true
 	}
 
 	if strings.EqualFold(header.Get("TLS-Required"), "No") {

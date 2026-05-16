@@ -21,8 +21,6 @@ package pgp_encryption
 import (
 	"context"
 	"errors"
-	"net/mail"
-	"strings"
 
 	"github.com/emersion/go-message/textproto"
 	"github.com/themadorg/madmail/framework/buffer"
@@ -121,57 +119,14 @@ func (s *state) CheckBody(ctx context.Context, header textproto.Header, body buf
 		return module.CheckResult{}
 	}
 
+	// Submission already ran EnforcePolicy at SMTP DATA (one full-body scan).
+	if s.msgMeta != nil && s.msgMeta.PGPPolicyVerified {
+		return module.CheckResult{}
+	}
+
 	s.contentType = header.Get("Content-Type")
 	s.mimeFrom = header.Get("From")
 	s.secureJoin = header.Get("Secure-Join")
-
-	if s.mimeFrom != "" {
-		mimeFromAddr, err := mail.ParseAddress(s.mimeFrom)
-		if err != nil {
-			return module.CheckResult{
-				Reject: true,
-				Reason: &exterrors.SMTPError{
-					Code:         554,
-					EnhancedCode: exterrors.EnhancedCode{5, 6, 0},
-					Message:      "Invalid From header",
-					Reason:       "invalid mime from",
-					CheckName:    modName,
-					Err:          err,
-				},
-			}
-		}
-		autoSubmitted := strings.ToLower(strings.TrimSpace(header.Get("Auto-Submitted")))
-		daemonBounce := autoSubmitted != "" && autoSubmitted != "no" &&
-			strings.HasPrefix(strings.ToLower(mimeFromAddr.Address), "mailer-daemon@") &&
-			strings.HasPrefix(strings.ToLower(s.mailFrom), "mailer-daemon@")
-		if !daemonBounce && !strings.EqualFold(mimeFromAddr.Address, s.mailFrom) {
-			return module.CheckResult{
-				Reject: true,
-				Reason: &exterrors.SMTPError{
-					Code:         554,
-					EnhancedCode: exterrors.EnhancedCode{5, 6, 0},
-					Message:      "From header does not match envelope sender",
-					Reason:       "from mismatch",
-					CheckName:    modName,
-				},
-			}
-		}
-	}
-
-	for _, recipient := range s.rcptTos {
-		if strings.Count(recipient, "@") != 1 {
-			return module.CheckResult{
-				Reject: true,
-				Reason: &exterrors.SMTPError{
-					Code:         554,
-					EnhancedCode: exterrors.EnhancedCode{5, 6, 0},
-					Message:      "Invalid recipient address format",
-					Reason:       "invalid recipient format",
-					CheckName:    modName,
-				},
-			}
-		}
-	}
 
 	r, err := body.Open()
 	if err != nil {
@@ -189,24 +144,17 @@ func (s *state) CheckBody(ctx context.Context, header textproto.Header, body buf
 	}
 	defer r.Close()
 
-	opts := pgp_verify.Options{
-		MailFrom:              s.mailFrom,
-		Recipients:            s.rcptTos,
-		PassthroughSenders:    s.c.passthroughSenders,
-		PassthroughRecipients: s.c.passthroughRecipients,
+	p := pgp_verify.Policy{
+		MailFrom:                   s.mailFrom,
+		Recipients:                 s.rcptTos,
+		PassthroughSenders:         s.c.passthroughSenders,
+		PassthroughRecipients:      s.c.passthroughRecipients,
+		AllowSecureJoin:            s.c.allowSecureJoin,
+		RequireFromMatchesEnvelope: true,
+		ValidateRecipientFormat:    true,
 	}
 
-	// allow_secure_join=no strips the Secure-Join headers before the
-	// policy check so EnforceEncryption falls back to "PGP/MIME only".
-	// Callers get the same code paths either way.
-	effectiveHeader := header
-	if !s.c.allowSecureJoin {
-		effectiveHeader = header.Copy()
-		effectiveHeader.Del("Secure-Join")
-		effectiveHeader.Del("Secure-Join-Invitenumber")
-	}
-
-	if err := pgp_verify.EnforceEncryption(effectiveHeader, r, opts); err != nil {
+	if err := pgp_verify.EnforcePolicy(header, r, p); err != nil {
 		return s.rejectResult(err)
 	}
 	return module.CheckResult{}

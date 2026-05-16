@@ -170,6 +170,17 @@ submission tls://0.0.0.0:{{.SubmissionTLS}} tcp://0.0.0.0:{{.SubmissionPort}} {
     auth &local_authdb
     insecure_auth {{if .TurnOffTLS}}yes{{else}}no{{end}}
 
+{{if .RequirePGPEncryption}}
+    # PGP-only: one scan at SMTP DATA via submissionCheckBody (not check.pgp_encryption).
+    pgp_allow_secure_join {{if .AllowSecureJoin}}yes{{else}}no{{end}}
+    {{if .PGPPassthroughSenders}}
+    pgp_passthrough_senders {{range .PGPPassthroughSenders}}{{.}} {{end}}
+    {{end}}
+    {{if .PGPPassthroughRecipients}}
+    pgp_passthrough_recipients {{range .PGPPassthroughRecipients}}{{.}} {{end}}
+    {{end}}
+{{end}}
+
     source $(local_domains) {
         check {
             {{if not .TurnOffTLS}}require_tls{{end}}
@@ -177,18 +188,6 @@ submission tls://0.0.0.0:{{.SubmissionTLS}} tcp://0.0.0.0:{{.SubmissionPort}} {
                 prepare_email &local_rewrites
                 user_to_email identity
             }
-{{if .RequirePGPEncryption}}
-            pgp_encryption {
-                require_encryption yes
-                allow_secure_join {{if .AllowSecureJoin}}yes{{else}}no{{end}}
-                {{if .PGPPassthroughSenders}}
-                passthrough_senders {{range .PGPPassthroughSenders}}{{.}} {{end}}
-                {{end}}
-                {{if .PGPPassthroughRecipients}}
-                passthrough_recipients {{range .PGPPassthroughRecipients}}{{.}} {{end}}
-                {{end}}
-            }
-{{end}}
         }
 
         destination postmaster $(local_domains) {

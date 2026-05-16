@@ -74,6 +74,12 @@ type Endpoint struct {
 	// requirePgp: if true, accept only PGP multipart/encrypted or Secure-Join DC messages.
 	requirePgp bool
 
+	// PGP policy knobs (submission DATA and require_pgp inbound). Replaces
+	// duplicating check.pgp_encryption in the submission pipeline.
+	pgpAllowSecureJoin       bool
+	pgpPassthroughSenders    []string
+	pgpPassthroughRecipients []string
+
 	sessionCnt atomic.Int32
 
 	listenersWg sync.WaitGroup
@@ -365,6 +371,9 @@ func (endp *Endpoint) setConfig(cfg *config.Map) error {
 	cfg.Bool("debug", true, false, &endp.Log.Debug)
 	cfg.Bool("defer_sender_reject", false, true, &endp.deferServerReject)
 	cfg.Bool("require_pgp", false, false, &endp.requirePgp)
+	cfg.Bool("pgp_allow_secure_join", false, true, &endp.pgpAllowSecureJoin)
+	cfg.StringList("pgp_passthrough_senders", false, false, nil, &endp.pgpPassthroughSenders)
+	cfg.StringList("pgp_passthrough_recipients", false, false, nil, &endp.pgpPassthroughRecipients)
 	cfg.Int("max_logged_rcpt_errors", false, false, 5, &endp.maxLoggedRcptErrors)
 	cfg.Custom("limits", false, false, func() (interface{}, error) {
 		return &limits.Group{}, nil

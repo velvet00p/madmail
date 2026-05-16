@@ -32,6 +32,7 @@ Welcome to the Madmail documentation. This page serves as a central hub for all 
 - **[Remote MX Forwarding](./tutorials/alias-to-remote.md)** - How to (and why you shouldn't) forward messages to remote servers.
 
 ## 💻 Internals & References
+- **[Code documentation](./code/README.md)** - Developer guide: startup/config, chatmail endpoint, PGP verification, performance (large SMTP uploads), message flows, accounts/auth, architecture, modules, goroutines, runtime (main tree only).
 - **[Followed Specifications](./internals/specifications.md)** - List of RFCs and standards implemented by maddy.
 - **[Implementation Quirks](./internals/quirks.md)** - Documented deviations from standards or unusual behaviors.
 - **[SQLite Optimization](./internals/sqlite.md)** - WAL mode, auto-vacuuming, and performance notes for the SQLite backend.

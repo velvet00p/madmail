@@ -19,7 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package imap
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
@@ -29,6 +29,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,10 +42,12 @@ import (
 	imapbackend "github.com/emersion/go-imap/backend"
 	imapserver "github.com/emersion/go-imap/server"
 	"github.com/emersion/go-message"
+	"github.com/emersion/go-message/textproto"
 	_ "github.com/emersion/go-message/charset"
 	"github.com/emersion/go-sasl"
 	i18nlevel "github.com/foxcpp/go-imap-i18nlevel"
 	namespace "github.com/foxcpp/go-imap-namespace"
+	"github.com/themadorg/madmail/framework/buffer"
 	"github.com/themadorg/madmail/framework/config"
 	modconfig "github.com/themadorg/madmail/framework/config/module"
 	tls2 "github.com/themadorg/madmail/framework/config/tls"
@@ -831,27 +835,70 @@ type encryptionWrapperUser struct {
 	imapbackend.User
 }
 
+const imapAppendSpillRAM = 1 << 20 // match SMTP buffer auto default
+
+func imapAppendBufferDir() (string, error) {
+	dir := filepath.Join(config.StateDirectory, "buffer")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("imap append buffer dir: %w", err)
+	}
+	return dir, nil
+}
+
 func (u *encryptionWrapperUser) CreateMessage(mbox string, flags []string, date time.Time, body imap.Literal, mboxObj imapbackend.Mailbox) error {
-	res, err := io.ReadAll(body)
+	dir, err := imapAppendBufferDir()
 	if err != nil {
-		return fmt.Errorf("failed to read message for PGP verification: %w", err)
+		return err
 	}
 
-	msg, err := message.Read(bytes.NewReader(res))
+	stored, err := buffer.SpillReader(body, dir, imapAppendSpillRAM)
 	if err != nil {
-		return fmt.Errorf("failed to parse message for PGP verification: %w", err)
+		return fmt.Errorf("failed to buffer APPEND payload: %w", err)
+	}
+	defer stored.Remove()
+
+	r, err := stored.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open buffered APPEND payload: %w", err)
+	}
+	br := bufio.NewReader(r)
+	header, err := textproto.ReadHeader(br)
+	_ = r.Close()
+	if err != nil {
+		return fmt.Errorf("failed to parse message header for PGP verification: %w", err)
 	}
 
+	rBody, err := stored.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open body for PGP verification: %w", err)
+	}
 	// IMAP APPEND has no envelope sender/recipients available at this
-	// layer, so we call EnforceEncryption with zero Options. The
-	// function still does the right thing (PGP/MIME or Secure-Join
-	// v[cg]-request). Any non-nil error signals policy rejection —
-	// the SMTPError details are captured in the returned error string.
-	if err := pgp_verify.EnforceEncryption(msg.Header.Header, msg.Body, pgp_verify.Options{}); err != nil {
+	// layer, so we call EnforceEncryption with zero Options.
+	if err := pgp_verify.EnforceEncryption(header, rBody, pgp_verify.Options{}); err != nil {
+		_ = rBody.Close()
 		return fmt.Errorf("Encryption Needed: Invalid Unencrypted Mail: %w", err)
 	}
+	_ = rBody.Close()
 
-	return u.User.CreateMessage(mbox, flags, date, bytes.NewReader(res), mboxObj)
+	rStore, err := stored.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open message for storage: %w", err)
+	}
+	defer rStore.Close()
+	return u.User.CreateMessage(mbox, flags, date, &appendLiteral{
+		Reader: rStore,
+		size:   stored.Len(),
+	}, mboxObj)
+}
+
+// appendLiteral implements imap.Literal for streaming APPEND bodies.
+type appendLiteral struct {
+	io.Reader
+	size int
+}
+
+func (l *appendLiteral) Len() int {
+	return l.size
 }
 
 func (u *encryptionWrapperUser) GetMailbox(name string, subscribed bool, conn imapbackend.Conn) (*imap.MailboxStatus, imapbackend.Mailbox, error) {

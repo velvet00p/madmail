@@ -136,6 +136,11 @@ type MsgMetadata struct {
 	// header. It is only meaningful if server has seen the body at least once
 	// (e.g. the message was passed via queue).
 	TLSRequireOverride bool
+
+	// PGPPolicyVerified is set by the SMTP submission session after
+	// pgp_verify.EnforcePolicy succeeds on DATA so check.pgp_encryption
+	// can skip a second full-body ciphertext scan in the pipeline.
+	PGPPolicyVerified bool
 }
 
 // DeepCopy creates a copy of the MsgMetadata structure, also

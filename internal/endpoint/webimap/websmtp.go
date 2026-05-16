@@ -228,8 +228,9 @@ func (h *Handler) deliverToTarget(
 ) error {
 	msgID, _ := module.GenerateMsgID()
 	msgMeta := &module.MsgMetadata{
-		ID:       msgID,
-		SMTPOpts: smtp.MailOptions{},
+		ID:                msgID,
+		SMTPOpts:          smtp.MailOptions{},
+		PGPPolicyVerified: true, // EnforceEncryption already ran in deliverMessage
 	}
 
 	delivery, err := dt.Start(ctx, msgMeta, from)

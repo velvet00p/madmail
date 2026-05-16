@@ -12,6 +12,7 @@ import (
 
 	"github.com/themadorg/madmail/framework/config"
 	"github.com/themadorg/madmail/internal/api/admin/resources"
+	"github.com/themadorg/madmail/internal/confutil"
 )
 
 // portMapping maps DB setting keys to the config file patterns they override.
@@ -155,6 +156,14 @@ func (e *Endpoint) reloadConfig() error {
 
 	content := string(data)
 	modified := false
+
+	if migrated, migChanged, migNotes := confutil.MigrateSubmissionPGP(content); migChanged {
+		content = migrated
+		modified = true
+		for _, n := range migNotes {
+			e.logger.Printf("reload: migrate submission PGP: %s", n)
+		}
+	}
 
 	// Apply each override from the database
 	for _, mapping := range configOverrides {

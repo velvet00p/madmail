@@ -729,24 +729,37 @@ func (q *Queue) storeNewMessage(meta *QueueMetadata, header textproto.Header, bo
 		return nil, err
 	}
 
-	bodyReader, err := body.Open()
-	if err != nil {
-		q.tryRemoveDanglingFile(id + ".header")
-		return nil, err
-	}
-	defer bodyReader.Close()
-
 	bodyPath := filepath.Join(q.location, id+".body")
-	bodyFile, err := os.Create(bodyPath)
-	if err != nil {
-		return nil, err
+	linked := false
+	if fb, ok := body.(buffer.FileBuffer); ok {
+		if err := fb.LinkAt(bodyPath); err == nil {
+			linked = true
+		}
 	}
-	defer bodyFile.Close()
-
-	if _, err := io.Copy(bodyFile, bodyReader); err != nil {
-		q.tryRemoveDanglingFile(id + ".body")
-		q.tryRemoveDanglingFile(id + ".header")
-		return nil, err
+	if !linked {
+		bodyReader, err := body.Open()
+		if err != nil {
+			q.tryRemoveDanglingFile(id + ".header")
+			return nil, err
+		}
+		bodyFile, err := os.Create(bodyPath)
+		if err != nil {
+			bodyReader.Close()
+			return nil, err
+		}
+		_, copyErr := io.Copy(bodyFile, bodyReader)
+		closeErr := bodyFile.Close()
+		bodyReader.Close()
+		if copyErr != nil {
+			q.tryRemoveDanglingFile(id + ".body")
+			q.tryRemoveDanglingFile(id + ".header")
+			return nil, copyErr
+		}
+		if closeErr != nil {
+			q.tryRemoveDanglingFile(id + ".body")
+			q.tryRemoveDanglingFile(id + ".header")
+			return nil, closeErr
+		}
 	}
 
 	if err := q.updateMetadataOnDisk(meta); err != nil {
@@ -759,8 +772,17 @@ func (q *Queue) storeNewMessage(meta *QueueMetadata, header textproto.Header, bo
 		return nil, err
 	}
 
-	if err := bodyFile.Sync(); err != nil {
+	if bf, err := os.Open(bodyPath); err != nil {
 		return nil, err
+	} else {
+		syncErr := bf.Sync()
+		closeErr := bf.Close()
+		if syncErr != nil {
+			return nil, syncErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
 	}
 
 	return buffer.FileBuffer{Path: bodyPath, LenHint: body.Len()}, nil

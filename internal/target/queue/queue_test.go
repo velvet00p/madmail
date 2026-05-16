@@ -823,6 +823,47 @@ func TestQueueDSN_RcptRewrite(t *testing.T) {
 	}
 }
 
+func TestStoreNewMessage_FileBufferHardlink(t *testing.T) {
+	dir := t.TempDir()
+	qDir := filepath.Join(dir, "queue")
+	if err := os.MkdirAll(qDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	srcPath := filepath.Join(dir, "src.body")
+	payload := []byte("large outbound body")
+	if err := os.WriteFile(srcPath, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	mod, _ := NewQueue("", "queue", nil, nil)
+	q := mod.(*Queue)
+	q.location = qDir
+
+	meta := &QueueMetadata{
+		MsgMeta: &module.MsgMetadata{ID: "testlink"},
+	}
+	header := textproto.Header{}
+	header.Set("Subject", "link test")
+
+	stored, err := q.storeNewMessage(meta, header, buffer.FileBuffer{Path: srcPath, LenHint: len(payload)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stored.Remove()
+
+	bodyPath := filepath.Join(qDir, "testlink.body")
+	got, err := os.ReadFile(bodyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("body mismatch")
+	}
+	if _, err := os.Stat(srcPath); err != nil {
+		t.Fatal("source buffer path should still exist after link")
+	}
+}
+
 func init() {
 	dontRecover = true
 }

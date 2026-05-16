@@ -159,12 +159,30 @@ func (s *Session) submissionPrepare(msgMeta *module.MsgMetadata, header *textpro
 // module — so a mail rejected on one surface is rejected the same way
 // on every other. The Secure-Join v[cg]-request unencrypted handshake
 // leg is the only unencrypted message this accepts.
-func (s *Session) submissionCheckBody(header textproto.Header, body io.Reader) error {
-	err := pgp_verify.EnforceEncryption(header, body, pgp_verify.Options{
-		MailFrom:   s.mailFrom,
-		Recipients: s.rcpts,
+func (endp *Endpoint) submissionPGPPolicy(mailFrom string, rcpts []string) pgp_verify.Policy {
+	return pgp_verify.SubmissionPolicy(
+		mailFrom, rcpts,
+		endp.pgpPassthroughSenders,
+		endp.pgpPassthroughRecipients,
+		endp.pgpAllowSecureJoin,
+	)
+}
+
+func (endp *Endpoint) inboundPGPPolicy(mailFrom string, rcpts []string) pgp_verify.Policy {
+	p := pgp_verify.PolicyFromOptions(pgp_verify.Options{
+		MailFrom:              mailFrom,
+		Recipients:            rcpts,
+		PassthroughSenders:    endp.pgpPassthroughSenders,
+		PassthroughRecipients: endp.pgpPassthroughRecipients,
 	})
+	p.AllowSecureJoin = endp.pgpAllowSecureJoin
+	return p
+}
+
+func (s *Session) submissionCheckBody(header textproto.Header, body io.Reader) error {
+	err := pgp_verify.EnforcePolicy(header, body, s.endp.submissionPGPPolicy(s.mailFrom, s.rcpts))
 	if err == nil {
+		s.msgMeta.PGPPolicyVerified = true
 		return nil
 	}
 	var smtpErr *exterrors.SMTPError

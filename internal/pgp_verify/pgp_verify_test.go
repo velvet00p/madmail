@@ -19,6 +19,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 package pgp_verify
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -180,5 +183,31 @@ func TestIsSecureJoinMessage_Valid(t *testing.T) {
 				t.Errorf("Expected %v, got %v", tt.expectedResult, result)
 			}
 		})
+	}
+}
+
+func TestStreamValidateOpenPGPPayload_ManyLeadingBlankLines(t *testing.T) {
+	raw := makeSEIPDPacket(64, 1)
+	b64 := base64.StdEncoding.EncodeToString(raw)
+	var armored strings.Builder
+	armored.WriteString(strings.Repeat("\r\n", 10))
+	armored.WriteString("-----BEGIN PGP MESSAGE-----\r\n")
+	armored.WriteString("Version: Test\r\n\r\n")
+	armored.WriteString(b64)
+	armored.WriteString("\r\n=AAAA\r\n-----END PGP MESSAGE-----\r\n")
+
+	if !streamValidateOpenPGPPayload(strings.NewReader(armored.String())) {
+		t.Fatal("expected armored payload with 10 leading blank lines to validate")
+	}
+}
+
+func TestConsumeArmorHeader_LineTooLongRejected(t *testing.T) {
+	var b bytes.Buffer
+	b.WriteString("-----BEGIN PGP MESSAGE-----\r\n")
+	b.WriteString("Comment: ")
+	b.WriteString(strings.Repeat("X", 70<<10))
+	br := bufio.NewReaderSize(&b, 64<<10)
+	if err := consumeArmorHeader(br); err == nil {
+		t.Fatal("expected overlong armor header line to be rejected")
 	}
 }

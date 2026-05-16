@@ -90,65 +90,7 @@ var errRejectUnencrypted = &exterrors.SMTPError{
 // a large unencrypted attachment does not burn CPU memcpy'ing a body
 // we are about to reject anyway.
 func EnforceEncryption(header textproto.Header, body io.Reader, opts Options) error {
-	// Operator-configured sender-wide bypass: skip all PGP policy.
-	if opts.MailFrom != "" && containsFold(opts.PassthroughSenders, opts.MailFrom) {
-		return nil
-	}
-
-	// Operator-configured recipient-wide bypass: every RCPT must match
-	// for the short-circuit to apply. A mixed batch (one passthrough +
-	// one normal recipient) still runs the full check.
-	if len(opts.Recipients) > 0 && allRecipientsPassthrough(opts.Recipients, opts.PassthroughRecipients) {
-		return nil
-	}
-
-	// mailer-daemon bounces: multipart/report with Auto-Submitted set.
-	// Delta Chat never produces these, but we must accept them on the
-	// inbound side so DSN / delivery failure notifications can reach
-	// local users. The envelope sender pins identity; a From-header
-	// spoof alone is not enough.
-	if isAllowedBounce(header, opts.MailFrom) {
-		return nil
-	}
-
-	// Dispatch on Content-Type before reading a single body byte.
-	// Anything that is not PGP/MIME or a Secure-Join handshake is
-	// rejected immediately — no ReadAll, no memcpy, no GC pressure.
-	contentType := header.Get("Content-Type")
-	if strings.TrimSpace(contentType) == "" {
-		return errRejectUnencrypted
-	}
-	mediatype, params, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return errRejectUnencrypted
-	}
-
-	switch strings.ToLower(mediatype) {
-	case "multipart/encrypted":
-		// A malformed encrypted body (corrupt base64, truncated
-		// partial-body length, impossible packet framing, …) is a
-		// permanent policy failure, not a transient error — the
-		// message is never going to become valid on retry. We fold
-		// all non-accept outcomes into a single 523 rejection and
-		// only surface a transient 451 if the body reader itself
-		// refuses to start (which in practice cannot happen because
-		// callers pre-buffer the body before reaching us).
-		if streamValidateEncryptedMIME(body, params["boundary"]) {
-			return nil
-		}
-		return errRejectUnencrypted
-	case "multipart/mixed":
-		// Only a narrow set of Secure-Join handshake messages may
-		// legitimately arrive unencrypted; everything else is reject.
-		if !isSecureJoinHeader(header) {
-			return errRejectUnencrypted
-		}
-		if streamValidateSecureJoinMIME(body, params["boundary"]) {
-			return nil
-		}
-		return errRejectUnencrypted
-	}
-	return errRejectUnencrypted
+	return EnforcePolicy(header, body, PolicyFromOptions(opts))
 }
 
 // IsAcceptedMessage reports whether the message would be accepted by
@@ -392,6 +334,11 @@ const (
 	armorEndLine   = "-----END PGP MESSAGE-----"
 )
 
+var (
+	armorBeginLineBytes = []byte(armorBeginLine)
+	armorEndLineBytes   = []byte(armorEndLine)
+)
+
 // streamValidateOpenPGPPayload detects whether the part payload is
 // ASCII-armored or binary (by peeking a few bytes) and hands off to
 // walkOpenPGPPackets on a reader that yields raw OpenPGP bytes. For
@@ -404,14 +351,16 @@ const (
 // propagate a transient error here — callers rely on false meaning
 // "reject with 523".
 func streamValidateOpenPGPPayload(r io.Reader) bool {
-	br := bufio.NewReaderSize(r, 4096)
+	br := bufio.NewReaderSize(r, 64<<10)
 
-	peek, _ := br.Peek(len(armorBeginLine) + 8)
+	// Peek up to 1024 bytes so leading blank lines from diverse clients
+	// do not push BEGIN past the detection window.
+	peek, _ := br.Peek(1024)
 	i := 0
 	for i < len(peek) && (peek[i] == ' ' || peek[i] == '\t' || peek[i] == '\r' || peek[i] == '\n') {
 		i++
 	}
-	if bytes.HasPrefix(peek[i:], []byte(armorBeginLine)) {
+	if bytes.HasPrefix(peek[i:], armorBeginLineBytes) {
 		ar, err := newArmorReader(br)
 		if err != nil {
 			return false
@@ -436,83 +385,77 @@ func streamValidateOpenPGPPayload(r io.Reader) bool {
 // invalid length encoding, or extra bytes after the SEIPD are all
 // treated as "not a valid encrypted payload" and return false. No
 // error is ever propagated; the caller maps false to 523.
+// readOpenPGPBodyLen reads one OpenPGP new-format body length, including
+// any leading partial-body chunks (discarded inline).
+func readOpenPGPBodyLen(br *bufio.Reader) (bodyLen int64, ok bool) {
+	for {
+		lb, err := br.ReadByte()
+		if err != nil {
+			return 0, false
+		}
+		if lb >= 224 && lb < 255 {
+			partialLen := 1 << (lb & 0x1F)
+			if _, err := io.CopyN(io.Discard, br, int64(partialLen)); err != nil {
+				return 0, false
+			}
+			continue
+		}
+
+		switch {
+		case lb < 192:
+			return int64(lb), true
+		case lb < 224:
+			lb2, err := br.ReadByte()
+			if err != nil {
+				return 0, false
+			}
+			return ((int64(lb) - 192) << 8) + int64(lb2) + 192, true
+		case lb == 255:
+			var buf [4]byte
+			if _, err := io.ReadFull(br, buf[:]); err != nil {
+				return 0, false
+			}
+			bodyLen := (int64(buf[0]) << 24) | (int64(buf[1]) << 16) | (int64(buf[2]) << 8) | int64(buf[3])
+			if bodyLen < 0 {
+				return 0, false
+			}
+			return bodyLen, true
+		default:
+			return 0, false
+		}
+	}
+}
+
 func walkOpenPGPPackets(r io.Reader) bool {
 	br := ensureBufio(r)
 
 	for {
 		tag, err := br.ReadByte()
 		if err != nil {
-			// EOF before any SEIPD — invalid.
 			return false
 		}
-		// New-format packet header only (bits 7+6 set).
 		if tag&0xC0 != 0xC0 {
 			return false
 		}
 		packetType := tag & 0x3F
 
-		// Partial body lengths come first, in a loop. Each partial
-		// chunk has length 1<<(b&0x1F); we discard chunk bytes and
-		// read the next length byte.
-		for {
-			lb, err := br.ReadByte()
-			if err != nil {
-				return false
-			}
-			if lb >= 224 && lb < 255 {
-				partialLen := 1 << (lb & 0x1F)
-				if _, err := io.CopyN(io.Discard, br, int64(partialLen)); err != nil {
-					return false
-				}
-				continue
-			}
+		bodyLen, ok := readOpenPGPBodyLen(br)
+		if !ok {
+			return false
+		}
 
-			// Final length byte (one-, two-, or five-octet form).
-			var bodyLen int64
-			switch {
-			case lb < 192:
-				bodyLen = int64(lb)
-			case lb < 224:
-				lb2, err := br.ReadByte()
-				if err != nil {
-					return false
-				}
-				bodyLen = ((int64(lb) - 192) << 8) + int64(lb2) + 192
-			case lb == 255:
-				var buf [4]byte
-				if _, err := io.ReadFull(br, buf[:]); err != nil {
-					return false
-				}
-				bodyLen = (int64(buf[0]) << 24) | (int64(buf[1]) << 16) | (int64(buf[2]) << 8) | int64(buf[3])
-				// A length >= 2^31 is almost certainly an attacker
-				// trying to trip the walker into a multi-gigabyte
-				// discard loop. Reject defensively; real PGP
-				// packets never get close to this size.
-				if bodyLen < 0 {
-					return false
-				}
-			default:
-				return false
-			}
-
-			if packetType == 18 {
-				// SEIPD must consume to EOF. Discard its body then
-				// verify nothing follows.
-				if _, err := io.CopyN(io.Discard, br, bodyLen); err != nil {
-					return false
-				}
-				if _, err := br.ReadByte(); err != io.EOF {
-					return false
-				}
-				return true
-			}
-			if packetType != 1 && packetType != 3 {
-				return false
-			}
+		if packetType == 18 {
 			if _, err := io.CopyN(io.Discard, br, bodyLen); err != nil {
 				return false
 			}
-			break
+			_, err := br.ReadByte()
+			return err == io.EOF
+		}
+		if packetType != 1 && packetType != 3 {
+			return false
+		}
+		if _, err := io.CopyN(io.Discard, br, bodyLen); err != nil {
+			return false
 		}
 	}
 }
@@ -521,7 +464,7 @@ func ensureBufio(r io.Reader) *bufio.Reader {
 	if b, ok := r.(*bufio.Reader); ok {
 		return b
 	}
-	return bufio.NewReaderSize(r, 4096)
+	return bufio.NewReaderSize(r, 64<<10)
 }
 
 // armorReader is a line-oriented filter that reads an ASCII-armored PGP
@@ -585,11 +528,13 @@ func consumeArmorHeader(src *bufio.Reader) error {
 }
 
 // readArmorHeaderLine is used by consumeArmorHeader once per header
-// line. It is not on the body hot path, so the per-call allocation
-// from ReadBytes is acceptable; the body loop uses ReadSlice to stay
-// alloc-free.
+// line. ReadSlice bounds the line to the bufio buffer (64 KiB) so a
+// missing newline cannot allocate an unbounded []byte.
 func readArmorHeaderLine(src *bufio.Reader) (string, error) {
-	b, err := src.ReadBytes('\n')
+	b, err := src.ReadSlice('\n')
+	if err == bufio.ErrBufferFull {
+		return "", errors.New("pgp_verify: armor header line too long")
+	}
 	if err != nil && len(b) == 0 {
 		return "", err
 	}
@@ -604,23 +549,28 @@ func readArmorHeaderLine(src *bufio.Reader) (string, error) {
 // CRC-24 line ("=XXXX") or the armor END marker, whichever comes first.
 //
 // The hot loop uses bufio.ReadSlice which returns a slice aliased into
-// the bufio internal buffer — no per-line allocation. The slice is
-// only referenced until the next I/O call; any leftover that doesn't
-// fit in p is copied into the (pre-sized) ar.pending buffer before
-// we return.
+// the bufio internal buffer — no per-line allocation. Multiple armor
+// lines are packed into one Read when the caller's buffer allows it,
+// which cuts syscall overhead on multi-megabyte armored bodies.
 func (ar *armorReader) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+	written := 0
 	if len(ar.pending) > 0 {
-		n := copy(p, ar.pending)
-		ar.pending = ar.pending[n:]
-		return n, nil
+		written = copy(p, ar.pending)
+		ar.pending = ar.pending[written:]
+	}
+	if written == len(p) {
+		return written, nil
 	}
 	if ar.eof {
-		return 0, io.EOF
+		if written == 0 {
+			return 0, io.EOF
+		}
+		return written, nil
 	}
-	for {
+	for written < len(p) && !ar.eof {
 		line, err := ar.src.ReadSlice('\n')
 		if len(line) > 0 {
 			end := len(line)
@@ -635,38 +585,41 @@ func (ar *armorReader) Read(p []byte) (int, error) {
 			if len(trimmed) == 0 {
 				if err != nil {
 					ar.eof = true
-					if err == io.EOF {
-						return 0, io.EOF
-					}
-					return 0, err
+					break
 				}
 				continue
 			}
-			if trimmed[0] == '=' || bytes.HasPrefix(trimmed, []byte(armorEndLine)) {
+			if trimmed[0] == '=' || (trimmed[0] == '-' && bytes.HasPrefix(trimmed, armorEndLineBytes)) {
 				ar.eof = true
-				return 0, io.EOF
+				break
 			}
-			n := copy(p, trimmed)
+			n := copy(p[written:], trimmed)
+			written += n
 			if n < len(trimmed) {
-				// Must copy the tail out of the bufio slice before
-				// the next ReadSlice invalidates it.
 				if ar.pendingBuf == nil {
-					ar.pendingBuf = make([]byte, 0, 128)
+					ar.pendingBuf = make([]byte, 0, 256)
 				}
 				ar.pendingBuf = append(ar.pendingBuf[:0], trimmed[n:]...)
 				ar.pending = ar.pendingBuf
+				break
 			}
-			if err != nil && err != io.EOF {
-				ar.eof = true
-			}
-			return n, nil
 		}
 		if err != nil {
 			ar.eof = true
-			if err == io.EOF {
+			if err != io.EOF && err != bufio.ErrBufferFull {
+				if written == 0 {
+					return 0, err
+				}
+				return written, err
+			}
+			if err == io.EOF && written == 0 {
 				return 0, io.EOF
 			}
-			return 0, err
+			break
 		}
 	}
+	if written == 0 && ar.eof {
+		return 0, io.EOF
+	}
+	return written, nil
 }

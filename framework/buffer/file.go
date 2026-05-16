@@ -60,6 +60,17 @@ func (fb FileBuffer) Remove() error {
 	return os.Remove(fb.Path)
 }
 
+// LinkAt creates destPath as a hard link to this buffer's file. On success the
+// blob is shared: Remove on this FileBuffer unlinks only fb.Path; the inode
+// remains until destPath is removed. Returns an error if linking is not
+// possible (e.g. cross-device); callers should fall back to io.Copy.
+func (fb FileBuffer) LinkAt(destPath string) error {
+	if fb.Path == "" {
+		return fmt.Errorf("buffer: empty file path")
+	}
+	return os.Link(fb.Path, destPath)
+}
+
 // BufferInFile is a convenience function which creates FileBuffer with underlying
 // file created in the specified directory with the random name.
 func BufferInFile(r io.Reader, dir string) (Buffer, error) {

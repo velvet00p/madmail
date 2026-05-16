@@ -1,6 +1,6 @@
 /*
 Maddy Mail Server - Composable all-in-one email server.
-Copyright © 2019-2020 Maddy Mail Server contributors
+Copyright © 2019-2020 Max Mazurov <fox.cpp@disroot.org>, Maddy Mail Server contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -21,13 +21,45 @@ package pgp_verify
 import (
 	"bytes"
 	"encoding/base64"
-	"fmt"
+	"io"
 	"math/rand"
+	"mime/multipart"
+	"net/textproto"
 	"strings"
 	"testing"
 
-	"github.com/emersion/go-message/textproto"
+	msgtextproto "github.com/emersion/go-message/textproto"
 )
+
+func makeSEIPDPacket(payloadBytes int, seed int64) []byte {
+	buf := make([]byte, 0, payloadBytes+6)
+	buf = append(buf, 0xD2, 0xFF,
+		byte(payloadBytes>>24), byte(payloadBytes>>16), byte(payloadBytes>>8), byte(payloadBytes))
+	payload := make([]byte, payloadBytes)
+	rng := rand.New(rand.NewSource(seed))
+	_, _ = rng.Read(payload)
+	return append(buf, payload...)
+}
+
+// writeEncryptedMIME builds RFC 2046-correct multipart/encrypted bodies via
+// mime/multipart.Writer so part boundaries are not glued into part 2.
+func writeEncryptedMIME(boundary string, writePart2 func(w io.Writer)) []byte {
+	var mime bytes.Buffer
+	mw := multipart.NewWriter(&mime)
+	_ = mw.SetBoundary(boundary)
+
+	p1, _ := mw.CreatePart(textproto.MIMEHeader{
+		"Content-Type": {"application/pgp-encrypted"},
+	})
+	_, _ = p1.Write([]byte("Version: 1"))
+
+	p2, _ := mw.CreatePart(textproto.MIMEHeader{
+		"Content-Type": {"application/octet-stream"},
+	})
+	writePart2(p2)
+	_ = mw.Close()
+	return mime.Bytes()
+}
 
 // makeArmoredPGP builds a syntactically valid multipart/encrypted body
 // whose SEIPD packet carries payloadBytes of random data. It does not
@@ -36,26 +68,9 @@ import (
 // the decoder + walker + discard loop end-to-end.
 func makeArmoredPGP(payloadBytes int) (boundary string, body []byte) {
 	boundary = "pgp-test-boundary"
+	raw := makeSEIPDPacket(payloadBytes, 1)
 
-	// Build a single SEIPD (tag 18) packet with a 5-octet length header
-	// and `payloadBytes` random body. Tag byte for new-format, type 18:
-	// 0b11000000 | 18 = 0xD2.
-	buf := make([]byte, 0, payloadBytes+5+1)
-	buf = append(buf, 0xD2)
-	buf = append(buf, 0xFF)
-	buf = append(buf,
-		byte(payloadBytes>>24),
-		byte(payloadBytes>>16),
-		byte(payloadBytes>>8),
-		byte(payloadBytes),
-	)
-	payload := make([]byte, payloadBytes)
-	rng := rand.New(rand.NewSource(1))
-	_, _ = rng.Read(payload)
-	buf = append(buf, payload...)
-
-	// ASCII-armor wrap with 64-column line folding.
-	b64 := base64.StdEncoding.EncodeToString(buf)
+	b64 := base64.StdEncoding.EncodeToString(raw)
 	var armored strings.Builder
 	armored.WriteString("-----BEGIN PGP MESSAGE-----\r\n")
 	armored.WriteString("Version: Test\r\n")
@@ -71,48 +86,115 @@ func makeArmoredPGP(payloadBytes int) (boundary string, body []byte) {
 	armored.WriteString("=AAAA\r\n")
 	armored.WriteString("-----END PGP MESSAGE-----\r\n")
 
-	var mime bytes.Buffer
-	fmt.Fprintf(&mime, "--%s\r\n", boundary)
-	mime.WriteString("Content-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n")
-	fmt.Fprintf(&mime, "--%s\r\n", boundary)
-	mime.WriteString("Content-Type: application/octet-stream\r\n\r\n")
-	mime.WriteString(armored.String())
-	fmt.Fprintf(&mime, "--%s--\r\n", boundary)
-	return boundary, mime.Bytes()
+	body = writeEncryptedMIME(boundary, func(w io.Writer) {
+		_, _ = io.WriteString(w, armored.String())
+	})
+	return boundary, body
 }
 
-// BenchmarkEnforceEncryption_Armored5MB measures the hot path for
-// large encrypted uploads. This is the scenario the user hit: the
-// attachment is large, the policy accepts it, but the old
-// implementation memcpy'd the body 8-9 times before returning.
-func BenchmarkEnforceEncryption_Armored5MB(b *testing.B) {
-	boundary, body := makeArmoredPGP(5 * 1024 * 1024)
-	h := textproto.Header{}
-	h.Set("Content-Type", "multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\""+boundary+"\"")
+// makeBinaryPGP is like makeArmoredPGP but part 2 is raw binary OpenPGP
+// (no ASCII armor) — less CPU in base64 decode, closer to some clients.
+func makeBinaryPGP(payloadBytes int) (boundary string, body []byte) {
+	boundary = "pgp-test-boundary"
+	raw := makeSEIPDPacket(payloadBytes, 2)
+	body = writeEncryptedMIME(boundary, func(w io.Writer) {
+		_, _ = w.Write(raw)
+	})
+	return boundary, body
+}
+
+func benchEnforceArmored(b *testing.B, payloadBytes int) {
+	boundary, body := makeArmoredPGP(payloadBytes)
+	h := msgtextproto.Header{}
+	h.Set("Content-Type", `multipart/encrypted; protocol="application/pgp-encrypted"; boundary="`+boundary+`"`)
+	opts := Options{
+		MailFrom:   "alice@example.org",
+		Recipients: []string{"bob@example.org"},
+	}
 
 	b.SetBytes(int64(len(body)))
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := EnforceEncryption(h, bytes.NewReader(body), Options{
-			MailFrom:   "alice@example.org",
-			Recipients: []string{"bob@example.org"},
-		}); err != nil {
+		if err := EnforceEncryption(h, bytes.NewReader(body), opts); err != nil {
 			b.Fatalf("unexpected rejection: %v", err)
 		}
 	}
 }
 
+func BenchmarkEnforceEncryption_Armored1MB(b *testing.B) {
+	benchEnforceArmored(b, 1<<20)
+}
+
+func BenchmarkEnforceEncryption_Armored5MB(b *testing.B) {
+	benchEnforceArmored(b, 5<<20)
+}
+
+func BenchmarkEnforceEncryption_Armored30MB(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping 30 MiB bench in -short mode")
+	}
+	benchEnforceArmored(b, 30<<20)
+}
+
+func BenchmarkEnforceEncryption_Armored100MB(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping 100 MiB bench in -short mode")
+	}
+	benchEnforceArmored(b, 100<<20)
+}
+
+func benchEnforceBinary(b *testing.B, payloadBytes int) {
+	boundary, body := makeBinaryPGP(payloadBytes)
+	h := msgtextproto.Header{}
+	h.Set("Content-Type", `multipart/encrypted; boundary="`+boundary+`"`)
+	opts := Options{
+		MailFrom:   "alice@example.org",
+		Recipients: []string{"bob@example.org"},
+	}
+
+	b.SetBytes(int64(len(body)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := EnforceEncryption(h, bytes.NewReader(body), opts); err != nil {
+			b.Fatalf("unexpected rejection: %v", err)
+		}
+	}
+}
+
+func TestMakeBinaryPGP_Validates(t *testing.T) {
+	boundary, body := makeBinaryPGP(1 << 20)
+	h := msgtextproto.Header{}
+	h.Set("Content-Type", `multipart/encrypted; boundary="`+boundary+`"`)
+	if err := EnforceEncryption(h, bytes.NewReader(body), Options{
+		MailFrom: "a@b.c", Recipients: []string{"d@e.f"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func BenchmarkEnforceEncryption_Binary5MB(b *testing.B) {
+	benchEnforceBinary(b, 5<<20)
+}
+
+func BenchmarkEnforceEncryption_Binary100MB(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping 100 MiB bench in -short mode")
+	}
+	benchEnforceBinary(b, 100<<20)
+}
+
 // BenchmarkEnforceEncryption_CleartextReject measures the fast reject
-// path: Content-Type alone is enough to decide, and the body is never
-// read. With the new streaming implementation this is O(1) regardless
-// of body size.
+// path: Content-Type alone is enough; body is not read.
 func BenchmarkEnforceEncryption_CleartextReject(b *testing.B) {
-	body := bytes.Repeat([]byte("cleartext content "), 1<<16) // ≈1 MiB
-	h := textproto.Header{}
+	body := bytes.Repeat([]byte("cleartext content "), 1<<16)
+	h := msgtextproto.Header{}
 	h.Set("Content-Type", "text/plain")
 	h.Set("From", "alice@example.org")
 
 	b.SetBytes(int64(len(body)))
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err := EnforceEncryption(h, bytes.NewReader(body), Options{
@@ -122,5 +204,25 @@ func BenchmarkEnforceEncryption_CleartextReject(b *testing.B) {
 		if err == nil {
 			b.Fatal("expected cleartext to be rejected")
 		}
+	}
+}
+
+// BenchmarkMeasureEnforceEncryption_5MB uses MeasureEnforceEncryption so
+// bench output includes the same stats as TestMeasureEnforceEncryption_Iterations.
+func BenchmarkMeasureEnforceEncryption_5MB(b *testing.B) {
+	boundary, body := makeArmoredPGP(5 << 20)
+	h := msgtextproto.Header{}
+	h.Set("Content-Type", `multipart/encrypted; boundary="`+boundary+`"`)
+	opts := Options{MailFrom: "a@b.c", Recipients: []string{"d@e.f"}}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		st, err := MeasureEnforceEncryption(h, bytes.NewReader(body), opts)
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.ReportMetric(float64(st.Duration.Nanoseconds())/1e6, "ms/op")
+		b.ReportMetric(float64(st.Mallocs), "mallocs/op")
+		b.ReportMetric(float64(st.TotalAlloc)/1024, "KiB_alloc/op")
 	}
 }
