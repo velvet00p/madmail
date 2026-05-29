@@ -6,7 +6,7 @@
 .PHONY: all init build build-admin-web build-chatmail-embed build-chatmail-embed-release build-with-admin-web build-release build-release-static build-workspace build-all \
 	test test-unit test-integration test-e2e test-maintenance test-imap test-turn test-core-turn test-deltachat test-dclogin relay-ping-build relay-ping-clean t1-bench t1-report-demo \
 	check vet lint fmt fmt-check run run-bg run-debug restart stop logs reset-db dev-certs clean help \
-	sign push push1 push2 log1 log2 push-signed publish build-publish
+	sign push push1 push2 log1 log2 push-signed publish init-publish build-publish
 
 # Optional overrides (copy .env.example → .env; publish merges context/madmail/.env into .env)
 -include .env
@@ -37,6 +37,11 @@ REMOTE2          ?=
 # Madmail admin-web submodule (context/madmail/admin-web). Override in .env if needed.
 ADMIN_WEB_DIR    ?= context/madmail/admin-web
 ADMIN_WEB_BUILD  := $(ADMIN_WEB_DIR)/build
+
+# scripts/publish.sh flags (e.g. --no-github-release). Not the `init` target — use `make init publish`.
+PUBLISH_ARGS ?=
+# Legacy name; `init` is stripped (asset setup is `make init`, then `make publish`).
+_publish_args := $(strip $(filter-out init,$(PUBLISH_ARGS) $(ARGS)))
 
 # iroh-relay v0.35.0 (musl) for chatmail-iroh embed (cmdeploy / Delta Chat parity)
 IROH_RELAY_VERSION ?= v0.35.0
@@ -338,9 +343,15 @@ build-publish: build-release
 	@$(MAKE) build-release-static
 	@cp $(BINARY_RELEASE) build/madmail-linux-amd64-legacy
 
+# First-time assets (iroh-relay, admin-web submodule) then full release publish.
+init-publish: init publish
+
 publish: build-publish
 	@chmod +x scripts/publish.sh
-	@./scripts/publish.sh $(ARGS)
+	@if echo ' $(PUBLISH_ARGS) $(ARGS) ' | grep -q ' init '; then \
+		echo 'ℹ️  Ignoring init (Makefile target, not a publish.sh flag). Use: make init publish'; \
+	fi
+	@./scripts/publish.sh $(_publish_args)
 
 # ── relay-ping (context/relay-ping) ──────────────────────────────────────────
 relay-ping-build:
@@ -368,6 +379,8 @@ help:
 	@echo "Quality:   check, lint, fmt, fmt-check"
 	@echo "relay-ping: relay-ping-build (in $(RELAY_PING_DIR))"
 	@echo "Init:      init (download iroh-relay $(IROH_RELAY_VERSION) into $(IROH_ASSETS)/)"
+	@echo "Release:   build-publish, publish (PUBLISH_ARGS=…), init-publish (init + publish)"
+	@echo "           publish.sh: --no-github-release, --no-release-notes, --sync-keys, …"
 	@echo "Other:     clean, help"
 	@echo ""
 	@echo "Defaults: STATE_DIR=$(STATE_DIR) CONFIG=$(CONFIG)"
