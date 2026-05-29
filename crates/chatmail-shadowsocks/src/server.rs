@@ -160,4 +160,3 @@ fn target_port(addr: &Address) -> String {
         Address::DomainNameAddress(_, port) => port.to_string(),
     }
 }
-

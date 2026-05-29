@@ -134,11 +134,7 @@ fn parse_envelope(raw: &[u8]) -> (Envelope, String) {
     }
     env.subject = msg.subject().unwrap_or_default().to_string();
     env.message_id = msg.message_id().unwrap_or_default().to_string();
-    env.in_reply_to = msg
-        .in_reply_to()
-        .as_text()
-        .unwrap_or_default()
-        .to_string();
+    env.in_reply_to = msg.in_reply_to().as_text().unwrap_or_default().to_string();
     env.from = convert_addrs(msg.from());
     env.to = convert_addrs(msg.to());
     env.cc = convert_addrs(msg.cc());
@@ -345,7 +341,12 @@ pub async fn messages_delete(
     delete_by_uid(&st, headers, path.uid, Some(path.mailbox)).await
 }
 
-async fn delete_by_uid(st: &WwwState, headers: HeaderMap, uid: u32, mailbox: Option<String>) -> Response {
+async fn delete_by_uid(
+    st: &WwwState,
+    headers: HeaderMap,
+    uid: u32,
+    mailbox: Option<String>,
+) -> Response {
     if !is_webimap_enabled(&st.pool).await {
         return service_disabled();
     }
@@ -356,7 +357,7 @@ async fn delete_by_uid(st: &WwwState, headers: HeaderMap, uid: u32, mailbox: Opt
     if mailbox.as_deref().is_some_and(|m| m != "INBOX") {
         return json_err(StatusCode::BAD_REQUEST, "unknown mailbox");
     }
-    let entries = match load_entries(&st, &user).await {
+    let entries = match load_entries(st, &user).await {
         Ok(e) => e,
         Err(r) => return r,
     };
@@ -395,7 +396,10 @@ pub async fn message_flags(
     }
     match req.op.as_str() {
         "add" | "remove" | "set" => json_ok(StatusCode::OK, &json!({ "status": "ok" })),
-        _ => json_err(StatusCode::BAD_REQUEST, "invalid op: must be add, remove, or set"),
+        _ => json_err(
+            StatusCode::BAD_REQUEST,
+            "invalid op: must be add, remove, or set",
+        ),
     }
 }
 

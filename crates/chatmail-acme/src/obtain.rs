@@ -83,9 +83,7 @@ pub async fn obtain_certificate(opts: &ObtainOptions) -> Result<()> {
 
 async fn obtain_dns_certificate(opts: &ObtainOptions) -> Result<()> {
     let domain = normalize_acme_domain(&opts.domain)?;
-    if opts.skip_if_valid
-        && !cert_needs_renewal(&opts.cert_path(), DNS_CERT_RENEW_WITHIN_DAYS)?
-    {
+    if opts.skip_if_valid && !cert_needs_renewal(&opts.cert_path(), DNS_CERT_RENEW_WITHIN_DAYS)? {
         info!(
             cert = %opts.cert_path().display(),
             "existing certificate still valid; skipping issuance"
@@ -97,7 +95,10 @@ async fn obtain_dns_certificate(opts: &ObtainOptions) -> Result<()> {
         return Ok(());
     }
 
-    println!("Starting HTTP-01 challenge listener on {}…", opts.http_listen);
+    println!(
+        "Starting HTTP-01 challenge listener on {}…",
+        opts.http_listen
+    );
     let solver = Http01Solver::new();
     let handle = solver
         .start(&opts.http_listen)
@@ -175,7 +176,8 @@ pub fn cert_needs_renewal(cert_path: &Path, renew_within_days: u32) -> Result<bo
     let Ok(pem) = std::fs::read(cert_path) else {
         return Ok(true);
     };
-    let cert = X509::from_pem(&pem).map_err(|e| ChatmailError::config(format!("parse cert: {e}")))?;
+    let cert =
+        X509::from_pem(&pem).map_err(|e| ChatmailError::config(format!("parse cert: {e}")))?;
     let not_after = cert.not_after();
     let not_after_str = not_after.to_string();
     let not_after = openssl::asn1::Asn1Time::from_str(&not_after_str)

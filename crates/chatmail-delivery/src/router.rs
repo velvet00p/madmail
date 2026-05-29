@@ -20,9 +20,9 @@ use std::sync::Arc;
 
 use chatmail_config::QueueSettings;
 use chatmail_db::federation_policy_label;
-use chatmail_state::{AppState, PolicyMode};
-use chatmail_types::{address_is_local, address_domain, ChatmailError, Result};
 use chatmail_db::DbPool;
+use chatmail_state::{AppState, PolicyMode};
+use chatmail_types::{address_domain, address_is_local, ChatmailError, Result};
 use tokio::sync::OnceCell;
 
 use crate::queue::{OutboundQueue, QueueConfig};
@@ -117,8 +117,7 @@ impl DeliveryContext {
                     local_deliveries.push((rcpt, uuid::Uuid::new_v4().to_string()));
                 }
             } else {
-                let mode =
-                    PolicyMode::from_label(&federation_policy_label(&self.pool).await?);
+                let mode = PolicyMode::from_label(&federation_policy_label(&self.pool).await?);
                 for rcpt in rcpts {
                     if !self.state.federation_policy.check_policy(&domain, mode) {
                         return Err(ChatmailError::FederationRejected(domain.clone()));

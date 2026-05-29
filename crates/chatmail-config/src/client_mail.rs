@@ -99,7 +99,10 @@ impl DcloginMailSettings {
 
         let (smtp_plain, has_smtp_plain) = resolve_port(
             db.submission_port.as_deref(),
-            config.submission_listen.as_deref().or(config.smtp_listen.as_deref()),
+            config
+                .submission_listen
+                .as_deref()
+                .or(config.smtp_listen.as_deref()),
             std::env::var("CHATMAIL_SMTP_ADDR").ok().as_deref(),
             "587",
         );
@@ -111,58 +114,57 @@ impl DcloginMailSettings {
         );
 
         // Inbound SMTP port in admin (`__SMTP_PORT__`) — used when no submission port is set.
-        let (smtp_plain, has_smtp_plain) = if db.submission_port.as_deref().is_none_or(|s| s.is_empty())
-            && db.smtp_port.as_deref().is_some_and(|s| !s.is_empty())
-        {
-            (db.smtp_port.clone().unwrap(), true)
-        } else {
-            (smtp_plain, has_smtp_plain)
-        };
+        let (smtp_plain, has_smtp_plain) =
+            if db.submission_port.as_deref().is_none_or(|s| s.is_empty())
+                && db.smtp_port.as_deref().is_some_and(|s| !s.is_empty())
+            {
+                (db.smtp_port.clone().unwrap(), true)
+            } else {
+                (smtp_plain, has_smtp_plain)
+            };
 
-        let (dclogin_imap_security, imap_port_tls, imap_port_starttls) = if let Some(sec) =
-            non_empty(db.dclogin_imap_security.as_deref())
-        {
-            (sec.to_string(), imap_tls.clone(), imap_plain.clone())
-        } else if let Some(rt) = runtime {
-            let rt_has_tls = rt.imap_tls_addr.is_some();
-            let rt_has_plain = rt.imap_plain_addr.is_some();
-            if rt_has_tls || rt_has_plain {
-                let (tls_p, plain_p) = runtime_mail_ports(
-                    rt.imap_tls_addr.as_deref(),
-                    rt.imap_plain_addr.as_deref(),
-                    &imap_tls,
-                    &imap_plain,
-                );
-                dclogin_ports(rt_has_tls, rt_has_plain, &tls_p, &plain_p)
+        let (dclogin_imap_security, imap_port_tls, imap_port_starttls) =
+            if let Some(sec) = non_empty(db.dclogin_imap_security.as_deref()) {
+                (sec.to_string(), imap_tls.clone(), imap_plain.clone())
+            } else if let Some(rt) = runtime {
+                let rt_has_tls = rt.imap_tls_addr.is_some();
+                let rt_has_plain = rt.imap_plain_addr.is_some();
+                if rt_has_tls || rt_has_plain {
+                    let (tls_p, plain_p) = runtime_mail_ports(
+                        rt.imap_tls_addr.as_deref(),
+                        rt.imap_plain_addr.as_deref(),
+                        &imap_tls,
+                        &imap_plain,
+                    );
+                    dclogin_ports(rt_has_tls, rt_has_plain, &tls_p, &plain_p)
+                } else {
+                    dclogin_ports(has_imap_tls, has_imap_plain, &imap_tls, &imap_plain)
+                }
             } else {
                 dclogin_ports(has_imap_tls, has_imap_plain, &imap_tls, &imap_plain)
-            }
-        } else {
-            dclogin_ports(has_imap_tls, has_imap_plain, &imap_tls, &imap_plain)
-        };
+            };
 
-        let (dclogin_smtp_security, smtp_port_tls, smtp_port_starttls) = if let Some(sec) =
-            non_empty(db.dclogin_smtp_security.as_deref())
-        {
-            (sec.to_string(), smtp_tls.clone(), smtp_plain.clone())
-        } else if let Some(rt) = runtime {
-            let rt_has_tls = rt.submission_tls_addr.is_some();
-            let rt_has_plain = rt.submission_plain_addr.is_some();
-            if rt_has_tls || rt_has_plain {
-                let (tls_p, plain_p) = runtime_mail_ports(
-                    rt.submission_tls_addr.as_deref(),
-                    rt.submission_plain_addr.as_deref(),
-                    &smtp_tls,
-                    &smtp_plain,
-                );
-                dclogin_ports(rt_has_tls, rt_has_plain, &tls_p, &plain_p)
+        let (dclogin_smtp_security, smtp_port_tls, smtp_port_starttls) =
+            if let Some(sec) = non_empty(db.dclogin_smtp_security.as_deref()) {
+                (sec.to_string(), smtp_tls.clone(), smtp_plain.clone())
+            } else if let Some(rt) = runtime {
+                let rt_has_tls = rt.submission_tls_addr.is_some();
+                let rt_has_plain = rt.submission_plain_addr.is_some();
+                if rt_has_tls || rt_has_plain {
+                    let (tls_p, plain_p) = runtime_mail_ports(
+                        rt.submission_tls_addr.as_deref(),
+                        rt.submission_plain_addr.as_deref(),
+                        &smtp_tls,
+                        &smtp_plain,
+                    );
+                    dclogin_ports(rt_has_tls, rt_has_plain, &tls_p, &plain_p)
+                } else {
+                    // Inbound SMTP (25) is not used for Delta Chat — only bound submission ports.
+                    dclogin_ports(has_smtp_tls, has_smtp_plain, &smtp_tls, &smtp_plain)
+                }
             } else {
-                // Inbound SMTP (25) is not used for Delta Chat — only bound submission ports.
                 dclogin_ports(has_smtp_tls, has_smtp_plain, &smtp_tls, &smtp_plain)
-            }
-        } else {
-            dclogin_ports(has_smtp_tls, has_smtp_plain, &smtp_tls, &smtp_plain)
-        };
+            };
 
         Self {
             client_host,
@@ -297,7 +299,10 @@ pub fn effective_imap_plain_listen(config: &AppConfig, db: &DbMailPorts) -> Opti
 
 /// TLS IMAP `host:port` when `imap tls://…` or `__IMAP_TLS_PORT__` is set.
 pub fn effective_imap_tls_listen(config: &AppConfig, db: &DbMailPorts) -> Option<String> {
-    if std::env::var("CHATMAIL_IMAP_ADDR").ok().is_some_and(|s| !s.is_empty()) {
+    if std::env::var("CHATMAIL_IMAP_ADDR")
+        .ok()
+        .is_some_and(|s| !s.is_empty())
+    {
         return None;
     }
     let has_conf = config.imap_tls_listen.is_some();
@@ -364,7 +369,10 @@ pub fn effective_http_plain_listen(config: &AppConfig, db: &DbMailPorts) -> Opti
 
 /// HTTPS (`chatmail tls://…` / `__HTTPS_PORT__`).
 pub fn effective_http_tls_listen(config: &AppConfig, db: &DbMailPorts) -> Option<String> {
-    if std::env::var("CHATMAIL_HTTP_ADDR").ok().is_some_and(|s| !s.is_empty()) {
+    if std::env::var("CHATMAIL_HTTP_ADDR")
+        .ok()
+        .is_some_and(|s| !s.is_empty())
+    {
         return None;
     }
     let has_conf = config.http_tls_listen.is_some();
@@ -447,11 +455,7 @@ fn dclogin_ports(
     plain_port: &str,
 ) -> (String, String, String) {
     if has_tls {
-        return (
-            "ssl".into(),
-            tls_port.to_string(),
-            plain_port.to_string(),
-        );
+        return ("ssl".into(), tls_port.to_string(), plain_port.to_string());
     }
     let port = plain_port.to_string();
     ("plain".into(), port.clone(), port)
@@ -474,17 +478,18 @@ pub fn client_connect_host(config: &AppConfig, http_host: Option<&str>) -> Strin
             return ip;
         }
     }
-    for candidate in [
+    for h in [
         config.mx_domain.as_deref(),
         config.mail_domain.as_deref(),
         config.hostname.as_deref(),
         config.primary_domain.as_deref(),
-    ] {
-        if let Some(h) = candidate {
-            let h = clean_host(h);
-            if !h.is_empty() && !is_loopback(&h) {
-                return h;
-            }
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let h = clean_host(h);
+        if !h.is_empty() && !is_loopback(&h) {
+            return h;
         }
     }
     "127.0.0.1".into()
@@ -536,11 +541,7 @@ fn encode_dclogin_password(password: &str) -> String {
 }
 
 /// Full `dclogin:` setup URI (Madmail www `createDcloginLink` / `chatmail.go` redirect).
-pub fn build_dclogin_link(
-    email: &str,
-    password: &str,
-    mail: &DcloginMailSettings,
-) -> String {
+pub fn build_dclogin_link(email: &str, password: &str, mail: &DcloginMailSettings) -> String {
     let host = &mail.client_host;
     let (imap_is, imap_ip) = dclogin_endpoint(
         &mail.dclogin_imap_security,
@@ -573,11 +574,7 @@ mod tests {
             dclogin_imap_security: "ssl".into(),
             dclogin_smtp_security: "ssl".into(),
         };
-        let uri = build_dclogin_link(
-            "user@[1.1.1.1]",
-            "p@ss:word",
-            &mail,
-        );
+        let uri = build_dclogin_link("user@[1.1.1.1]", "p@ss:word", &mail);
         assert!(uri.starts_with("dclogin:user@[1.1.1.1]/?p="));
         assert!(uri.contains("&v=1&ih=1.1.1.1&ip=993&is=ssl&sh=1.1.1.1&sp=465&ss=ssl&ic=3"));
         assert!(uri.contains("p%40ss%3Aword"));

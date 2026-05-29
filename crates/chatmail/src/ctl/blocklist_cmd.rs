@@ -89,7 +89,10 @@ mod tests {
 
     #[test]
     fn normalize_bare_localpart() {
-        assert_eq!(normalize_blocklist_username("BadActor").unwrap(), "badactor");
+        assert_eq!(
+            normalize_blocklist_username("BadActor").unwrap(),
+            "badactor"
+        );
     }
 
     #[tokio::test]

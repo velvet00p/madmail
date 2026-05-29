@@ -17,8 +17,5 @@
 
 /// Print package version (Madmail `maddy version`).
 pub fn print_version() {
-    println!(
-        "chatmail {} (chatmail-rs)",
-        env!("CARGO_PKG_VERSION")
-    );
+    println!("chatmail {} (chatmail-rs)", env!("CARGO_PKG_VERSION"));
 }

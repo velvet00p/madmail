@@ -75,7 +75,9 @@ mod tests {
             .unwrap();
         assert!(mailbox.maildir_for_user(user).root.exists());
 
-        delete_account_full(&pool, &mailbox, user, "test delete").await.unwrap();
+        delete_account_full(&pool, &mailbox, user, "test delete")
+            .await
+            .unwrap();
         assert!(!passwords::user_exists(&pool, user).await.unwrap());
         assert!(!mailbox.maildir_for_user(user).root.exists());
         assert!(blocklist::is_blocked(&pool, user).await.unwrap());

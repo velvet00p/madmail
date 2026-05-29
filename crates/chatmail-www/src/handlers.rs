@@ -23,9 +23,7 @@ use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Json;
 use chatmail_auth::{hash_password, normalize_username, verify_password};
-use chatmail_db::{
-    blocklist, get_bool_setting, passwords, registration_tokens, settings_keys,
-};
+use chatmail_db::{blocklist, get_bool_setting, passwords, registration_tokens, settings_keys};
 use chatmail_delivery::DeliveryContext;
 use chatmail_pgp::{enforce_encryption, EnforceOptions};
 use chatmail_smtp::protocol::validate_submission_headers;
@@ -110,11 +108,15 @@ async fn doc_lang(st: &WwwState, name: &str, headers: &HeaderMap) -> Response {
     };
     let lang_path = format!("docs/{lang}/{name}");
     if www_html_exists(&lang_path, st.www_dir.as_deref()) {
-        return render_template(st, &lang_path, None, host).await.into_response();
+        return render_template(st, &lang_path, None, host)
+            .await
+            .into_response();
     }
     let en_path = format!("docs/en/{name}");
     if www_html_exists(&en_path, st.www_dir.as_deref()) {
-        return render_template(st, &en_path, None, host).await.into_response();
+        return render_template(st, &en_path, None, host)
+            .await
+            .into_response();
     }
     let legacy = match name {
         "general.html" => "general_docs.html",
@@ -125,7 +127,9 @@ async fn doc_lang(st: &WwwState, name: &str, headers: &HeaderMap) -> Response {
         "admin.html" => "admin_docs.html",
         _ => name,
     };
-    render_template(st, legacy, None, host).await.into_response()
+    render_template(st, legacy, None, host)
+        .await
+        .into_response()
 }
 
 pub async fn share_get(State(st): State<WwwState>, headers: HeaderMap) -> impl IntoResponse {
@@ -190,11 +194,8 @@ pub async fn new_account(
     registration_token = registration_token.trim().to_string();
 
     if !registration_token.is_empty() {
-        if let Err(e) = registration_tokens::validate_registration_token(
-            &st.pool,
-            &registration_token,
-        )
-        .await
+        if let Err(e) =
+            registration_tokens::validate_registration_token(&st.pool, &registration_token).await
         {
             return (
                 StatusCode::FORBIDDEN,
@@ -202,13 +203,9 @@ pub async fn new_account(
             )
                 .into_response();
         }
-    } else if get_bool_setting(
-        &st.pool,
-        settings_keys::REGISTRATION_TOKEN_REQUIRED,
-        false,
-    )
-    .await
-    .unwrap_or(false)
+    } else if get_bool_setting(&st.pool, settings_keys::REGISTRATION_TOKEN_REQUIRED, false)
+        .await
+        .unwrap_or(false)
     {
         return (
             StatusCode::FORBIDDEN,
@@ -229,7 +226,7 @@ pub async fn new_account(
     const MAX_ATTEMPTS: u32 = 5;
     let domain = st
         .config
-        .effective_registration_domain(client_host(&headers).as_deref());
+        .effective_registration_domain(client_host(&headers));
     for _ in 0..MAX_ATTEMPTS {
         let policy = st.config.credential_policy();
         let user = match normalize_username(&format!(
@@ -246,7 +243,10 @@ pub async fn new_account(
                     .into_response();
             }
         };
-        if blocklist::is_blocked(&st.pool, &user).await.unwrap_or(false) {
+        if blocklist::is_blocked(&st.pool, &user)
+            .await
+            .unwrap_or(false)
+        {
             continue;
         }
         let password = random_alnum(policy.generated_password_length());
@@ -260,16 +260,13 @@ pub async fn new_account(
                     .into_response();
             }
         };
-        if passwords::create_user(&st.pool, &user, &hash).await.is_err() {
-            continue;
-        }
-        if st
-            .app
-            .mailbox_store
-            .init_user_dir(&user)
+        if passwords::create_user(&st.pool, &user, &hash)
             .await
             .is_err()
         {
+            continue;
+        }
+        if st.app.mailbox_store.init_user_dir(&user).await.is_err() {
             let _ = passwords::delete_user(&st.pool, &user).await;
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
@@ -282,12 +279,9 @@ pub async fn new_account(
                 .into_response();
         }
         if !registration_token.is_empty() {
-            if let Err(e) = registration_tokens::attach_registration_token(
-                &st.pool,
-                &user,
-                &registration_token,
-            )
-            .await
+            if let Err(e) =
+                registration_tokens::attach_registration_token(&st.pool, &user, &registration_token)
+                    .await
             {
                 let _ = passwords::delete_user(&st.pool, &user).await;
                 let _ = chatmail_db::db_execute!(
@@ -330,10 +324,7 @@ pub async fn webimap_send(
 
     req.from = user.clone();
     if req.to.is_empty() {
-        return webimap_error(
-            StatusCode::BAD_REQUEST,
-            "missing recipients",
-        );
+        return webimap_error(StatusCode::BAD_REQUEST, "missing recipients");
     }
 
     match websmtp_deliver(&st, &user, &req.to, &req.body).await {
@@ -436,13 +427,19 @@ pub(crate) async fn webimap_authenticate(
         .await
         .map_err(|e| webimap_error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
     else {
-        return Err(webimap_error(StatusCode::UNAUTHORIZED, "invalid credentials"));
+        return Err(webimap_error(
+            StatusCode::UNAUTHORIZED,
+            "invalid credentials",
+        ));
     };
 
     if !verify_password(password, &hash)
         .map_err(|e| webimap_error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
     {
-        return Err(webimap_error(StatusCode::UNAUTHORIZED, "invalid credentials"));
+        return Err(webimap_error(
+            StatusCode::UNAUTHORIZED,
+            "invalid credentials",
+        ));
     }
 
     Ok(user)
@@ -481,7 +478,10 @@ pub async fn binary_download(method: Method) -> impl IntoResponse {
 
     let disposition = format!("attachment; filename={filename}");
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/octet-stream"));
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
     if let Ok(v) = HeaderValue::try_from(disposition) {
         headers.insert(header::CONTENT_DISPOSITION, v);
     }
@@ -545,17 +545,13 @@ fn static_cache_control(path: &str, live_www_dir: bool) -> Option<&'static str> 
         return Some("no-cache, must-revalidate");
     }
     match path.rsplit('.').next()? {
-        "css" | "js" | "svg" | "png" | "jpg" | "jpeg" | "ico" => {
-            Some("public, max-age=86400")
-        }
+        "css" | "js" | "svg" | "png" | "jpg" | "jpeg" | "ico" => Some("public, max-age=86400"),
         _ => None,
     }
 }
 
 fn client_host(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
+    headers.get(header::HOST).and_then(|v| v.to_str().ok())
 }
 
 async fn render_template(
@@ -621,6 +617,7 @@ fn random_alnum(len: usize) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod random_alnum_tests {
     use super::random_alnum;
     use chatmail_config::AppConfig;

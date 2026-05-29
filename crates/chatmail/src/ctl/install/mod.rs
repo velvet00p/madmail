@@ -31,8 +31,8 @@ use chatmail_config::{effective_database_config, is_local_dev_state_dir, AppConf
 use chatmail_db::{init_db_from_config, set_setting, settings_keys};
 use chatmail_types::{wrap_ip_domain, ChatmailError, Result};
 
-use super::language::validate_language_code;
 use self::config::{local_domains_for_ip, render_maddy_conf, InstallConfig};
+use super::language::validate_language_code;
 
 pub async fn install(global: &Args, args: &InstallArgs) -> Result<()> {
     if !args.non_interactive && !args.simple {
@@ -44,7 +44,10 @@ pub async fn install(global: &Args, args: &InstallArgs) -> Result<()> {
     let mut cfg = InstallConfig::from_args(global, args)?;
     resolve_tls_mode(&mut cfg, args)?;
 
-    println!("Installing {} (TLS mode: {})", cfg.binary_name, cfg.tls_mode);
+    println!(
+        "Installing {} (TLS mode: {})",
+        cfg.binary_name, cfg.tls_mode
+    );
     println!("  Primary domain: {}", cfg.primary_domain);
     println!("  Hostname:       {}", cfg.hostname);
     println!("  Public IP:      {}", cfg.public_ip);
@@ -178,9 +181,7 @@ async fn setup_certificates(cfg: &InstallConfig, args: &InstallArgs) -> Result<(
             state_dir: cfg.state_dir.clone(),
             cert_path: Some(cfg.cert_path.clone()),
             key_path: Some(cfg.key_path.clone()),
-            http_listen: "0.0.0.0:80"
-                .parse()
-                .expect("valid default listen"),
+            http_listen: "0.0.0.0:80".parse().expect("valid default listen"),
             staging: false,
             skip_if_valid: false,
         };
@@ -199,7 +200,10 @@ async fn setup_certificates(cfg: &InstallConfig, args: &InstallArgs) -> Result<(
 }
 
 fn create_directories(cfg: &InstallConfig) -> Result<()> {
-    let config_dir = cfg.config_path.parent().unwrap_or(std::path::Path::new("/etc/madmail"));
+    let config_dir = cfg
+        .config_path
+        .parent()
+        .unwrap_or(std::path::Path::new("/etc/madmail"));
     for dir in [
         &cfg.state_dir,
         cfg.state_dir.join("messages").as_path(),
@@ -215,9 +219,11 @@ fn create_directories(cfg: &InstallConfig) -> Result<()> {
 }
 
 async fn seed_install_language(cfg: &InstallConfig) -> Result<()> {
-    let mut app_config = AppConfig::default();
-    app_config.state_dir = Some(cfg.state_dir.clone());
-    app_config.language = Some(cfg.language.clone());
+    let app_config = AppConfig {
+        state_dir: Some(cfg.state_dir.clone()),
+        language: Some(cfg.language.clone()),
+        ..Default::default()
+    };
 
     let database = effective_database_config(&cfg.state_dir, &app_config);
     let pool = init_db_from_config(&database).await?;
@@ -249,10 +255,8 @@ fn ensure_secrets(cfg: &mut InstallConfig) -> Result<()> {
     if cfg.enable_turn && cfg.turn_secret.is_empty() {
         let mut b = [0u8; 16];
         getrandom::fill(&mut b).map_err(|e| ChatmailError::config(format!("turn secret: {e}")))?;
-        cfg.turn_secret = base64::Engine::encode(
-            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-            b,
-        );
+        cfg.turn_secret =
+            base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, b);
     }
     Ok(())
 }
@@ -306,9 +310,8 @@ impl InstallConfig {
             .clone()
             .unwrap_or_else(|| cert_dir.join("privkey.pem"));
 
-        let system_install = args.simple
-            || config_dir.starts_with("/etc/")
-            || state_dir.starts_with("/var/lib/");
+        let system_install =
+            args.simple || config_dir.starts_with("/etc/") || state_dir.starts_with("/var/lib/");
 
         let binary_path = args
             .binary_path
@@ -320,9 +323,7 @@ impl InstallConfig {
                 .ip
                 .clone()
                 .or_else(|| args.domain.clone())
-                .ok_or_else(|| {
-                    ChatmailError::config("--ip is required for --simple install")
-                })?;
+                .ok_or_else(|| ChatmailError::config("--ip is required for --simple install"))?;
             let bare = ip.trim().trim_matches(|c| c == '[' || c == ']').to_string();
             let is_ip = bare.parse::<std::net::IpAddr>().is_ok();
             if !is_ip {
@@ -338,10 +339,7 @@ impl InstallConfig {
                 bare.clone()
             };
             let local_domains = if args.domain.is_some() {
-                format!(
-                    "$(primary_domain) {} [{}]",
-                    bare, bare
-                )
+                format!("$(primary_domain) {} [{}]", bare, bare)
             } else {
                 local_domains_for_ip(&bare)
             };
@@ -354,10 +352,9 @@ impl InstallConfig {
                 args.turn_off_tls || (is_ip && !args.auto_ip_cert),
             )
         } else {
-            let domain = args
-                .domain
-                .clone()
-                .ok_or_else(|| ChatmailError::config("--domain is required (or use --simple --ip)"))?;
+            let domain = args.domain.clone().ok_or_else(|| {
+                ChatmailError::config("--domain is required (or use --simple --ip)")
+            })?;
             let hostname = args
                 .hostname
                 .clone()
@@ -423,10 +420,7 @@ fn ensure_ss_password(cfg: &mut InstallConfig) -> Result<()> {
     }
     let mut b = [0u8; 16];
     getrandom::fill(&mut b).map_err(|e| ChatmailError::config(format!("ss password: {e}")))?;
-    cfg.ss_password = base64::Engine::encode(
-        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-        b,
-    );
+    cfg.ss_password = base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, b);
     Ok(())
 }
 
@@ -498,7 +492,9 @@ mod tests {
         assert_eq!(cfg.primary_domain, format!("[{EXAMPLE_PUBLIC_IP}]"));
         assert_eq!(cfg.hostname, EXAMPLE_PUBLIC_IP);
         assert_eq!(cfg.public_ip, EXAMPLE_PUBLIC_IP);
-        assert!(cfg.local_domains.contains(&format!("[{EXAMPLE_PUBLIC_IP}]")));
+        assert!(cfg
+            .local_domains
+            .contains(&format!("[{EXAMPLE_PUBLIC_IP}]")));
         assert!(cfg.turn_off_tls);
         let mut args_ip_cert = args.clone();
         args_ip_cert.auto_ip_cert = true;

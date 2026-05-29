@@ -22,8 +22,8 @@ use std::sync::{Arc, RwLock};
 use axum::routing::{delete, get, post};
 use axum::Router;
 use chatmail_config::AppConfig;
-use chatmail_state::AppState;
 use chatmail_db::DbPool;
+use chatmail_state::AppState;
 
 use crate::assets::{embedded_asset_bytes, external_asset_bytes, preload_embedded_www};
 use crate::context_cache::{SharedWwwContextCache, WwwContextCache};
@@ -79,7 +79,7 @@ impl WwwState {
     /// CSS/JS/SVG: embedded default = RAM only; external `www_dir` = live disk.
     pub fn load_asset(&self, path: &str) -> Option<Arc<[u8]>> {
         if let Some(ref dir) = self.www_dir {
-            return external_asset_bytes(path, dir).map(|v| Arc::from(v));
+            return external_asset_bytes(path, dir).map(Arc::from);
         }
         if let Some(b) = self.asset_cache.read().ok()?.get(path) {
             return Some(Arc::clone(b));
@@ -138,7 +138,10 @@ pub fn www_router(state: WwwState) -> Router {
             post(webimap::message_flags).options(webimap::options),
         )
         .route("/webimap/ws", get(webimap::websocket))
-        .route("/share", get(handlers::share_get).post(handlers::share_post))
+        .route(
+            "/share",
+            get(handlers::share_get).post(handlers::share_post),
+        )
         .route("/app", get(handlers::app_page))
         .route("/docs", get(handlers::docs_redirect))
         .route("/docs/", get(handlers::docs_index))

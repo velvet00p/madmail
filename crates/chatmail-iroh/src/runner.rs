@@ -76,10 +76,7 @@ pub fn resolve_binary() -> Result<PathBuf> {
 }
 
 /// Write config and spawn `iroh-relay --config-path`.
-pub async fn spawn_iroh_relay(
-    state_dir: &Path,
-    opts: IrohSpawnOpts,
-) -> Result<IrohRelayHandle> {
+pub async fn spawn_iroh_relay(state_dir: &Path, opts: IrohSpawnOpts) -> Result<IrohRelayHandle> {
     let binary = resolve_binary()?;
     let config_path = state_dir.join("iroh-relay.toml");
     write_config(&config_path, &opts).await?;

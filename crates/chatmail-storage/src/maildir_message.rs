@@ -123,9 +123,7 @@ pub async fn list_mailbox_messages(
                     base_id: base_id.to_string(),
                     filename,
                     size: meta.len(),
-                    internal_date: meta
-                        .modified()
-                        .unwrap_or_else(|_| SystemTime::now()),
+                    internal_date: meta.modified().unwrap_or_else(|_| SystemTime::now()),
                     flags,
                 },
             ));
@@ -271,11 +269,7 @@ async fn write_message(
 }
 
 /// Remove messages marked `\Deleted` (maildir `:2,T`).
-pub async fn expunge_deleted(
-    store: &MailboxStore,
-    user: &str,
-    mailbox: &str,
-) -> Result<usize> {
+pub async fn expunge_deleted(store: &MailboxStore, user: &str, mailbox: &str) -> Result<usize> {
     let paths = store.maildir_for_mailbox(user, mailbox);
     let mut removed = 0usize;
     for dir in [&paths.new, &paths.cur] {

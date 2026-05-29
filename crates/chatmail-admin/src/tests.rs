@@ -15,6 +15,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#![allow(clippy::field_reassign_with_default)]
+
 use std::sync::Arc;
 
 use chatmail_config::AppConfig;
@@ -53,16 +55,14 @@ async fn test_state(token: &str, file_config: AppConfig) -> (AdminState, TempDir
 
 #[tokio::test]
 async fn p9_shadowsocks_not_configured() {
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", AppConfig::default()).await;
-    let (_, body) = resources::dispatch(
-        &st,
-        "GET",
-        "/admin/services/shadowsocks",
-        &json!({}),
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
     )
-    .await
-    .unwrap();
+    .await;
+    let (_, body) = resources::dispatch(&st, "GET", "/admin/services/shadowsocks", &json!({}))
+        .await
+        .unwrap();
     assert_eq!(
         body.unwrap().get("status").and_then(|v| v.as_str()),
         Some("disabled")
@@ -85,17 +85,11 @@ async fn p9_shadowsocks_configured_toggle() {
     cfg.ss_addr = Some("0.0.0.0:8388".into());
     cfg.ss_password = Some("test-pass".into());
     cfg.ss_cipher = Some("aes-128-gcm".into());
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", cfg).await;
+    let (st, _dir) = test_state("secret-token-01234567890123456789012345678901", cfg).await;
 
-    let (_, body) = resources::dispatch(
-        &st,
-        "GET",
-        "/admin/services/shadowsocks",
-        &json!({}),
-    )
-    .await
-    .unwrap();
+    let (_, body) = resources::dispatch(&st, "GET", "/admin/services/shadowsocks", &json!({}))
+        .await
+        .unwrap();
     assert_eq!(
         body.unwrap().get("status").and_then(|v| v.as_str()),
         Some("enabled")
@@ -117,8 +111,11 @@ async fn p9_shadowsocks_configured_toggle() {
 
 #[tokio::test]
 async fn p9_status_message_counters() {
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", AppConfig::default()).await;
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
+    )
+    .await;
     record_smtp_accepted(false);
     record_smtp_accepted(true);
 
@@ -127,14 +124,20 @@ async fn p9_status_message_counters() {
         .unwrap();
     let body = body.unwrap();
     assert_eq!(body.get("sent_messages").and_then(|v| v.as_i64()), Some(2));
-    assert_eq!(body.get("received_messages").and_then(|v| v.as_i64()), Some(1));
+    assert_eq!(
+        body.get("received_messages").and_then(|v| v.as_i64()),
+        Some(1)
+    );
     assert_eq!(message_stats_snapshot().0, 2);
 }
 
 #[tokio::test]
 async fn p9_admin_status_get() {
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", AppConfig::default()).await;
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
+    )
+    .await;
     let (status, body) = resources::dispatch(&st, "GET", "/admin/status", &json!({}))
         .await
         .unwrap();
@@ -144,8 +147,11 @@ async fn p9_admin_status_get() {
 
 #[tokio::test]
 async fn p9_admin_overview_get() {
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", AppConfig::default()).await;
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
+    )
+    .await;
     let (status, body) = resources::dispatch(&st, "GET", "/admin/overview", &json!({}))
         .await
         .unwrap();
@@ -174,8 +180,7 @@ async fn p9_ss_ws_and_grpc_transports_disabled() {
     let mut cfg = AppConfig::default();
     cfg.ss_addr = Some("0.0.0.0:8388".into());
     cfg.ss_password = Some("pw".into());
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", cfg).await;
+    let (st, _dir) = test_state("secret-token-01234567890123456789012345678901", cfg).await;
 
     for path in ["/admin/services/ss_ws", "/admin/services/ss_grpc"] {
         let (_, body) = resources::dispatch(&st, "GET", path, &json!({}))
@@ -185,14 +190,9 @@ async fn p9_ss_ws_and_grpc_transports_disabled() {
             body.unwrap().get("status").and_then(|v| v.as_str()),
             Some("disabled")
         );
-        let err = resources::dispatch(
-            &st,
-            "POST",
-            path,
-            &json!({ "action": "enable" }),
-        )
-        .await
-        .unwrap_err();
+        let err = resources::dispatch(&st, "POST", path, &json!({ "action": "enable" }))
+            .await
+            .unwrap_err();
         assert_eq!(err.0, 400);
     }
 
@@ -215,20 +215,28 @@ async fn p9_all_settings_includes_shadowsocks_url_field() {
     let mut cfg = AppConfig::default();
     cfg.ss_addr = Some("0.0.0.0:8388".into());
     cfg.ss_password = Some("pw".into());
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", cfg).await;
+    let (st, _dir) = test_state("secret-token-01234567890123456789012345678901", cfg).await;
     let (_, body) = resources::dispatch(&st, "GET", "/admin/settings", &json!({}))
         .await
         .unwrap();
     let body = body.unwrap();
-    assert_eq!(body.get("ss_enabled").and_then(|v| v.as_str()), Some("enabled"));
-    assert!(body.get("shadowsocks_url").and_then(|v| v.as_str()).is_some_and(|s| s.starts_with("ss://")));
+    assert_eq!(
+        body.get("ss_enabled").and_then(|v| v.as_str()),
+        Some("enabled")
+    );
+    assert!(body
+        .get("shadowsocks_url")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.starts_with("ss://")));
 }
 
 #[tokio::test]
 async fn admin_message_size_get_put_delete() {
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", AppConfig::default()).await;
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
+    )
+    .await;
 
     let (_, body) = resources::dispatch(&st, "GET", "/admin/message-size", &json!({}))
         .await
@@ -240,16 +248,14 @@ async fn admin_message_size_get_put_delete() {
     );
     assert_eq!(body.get("effective").and_then(|v| v.as_str()), Some("100M"));
 
-    let (_, body) = resources::dispatch(
-        &st,
-        "PUT",
-        "/admin/message-size",
-        &json!({ "size": "64M" }),
-    )
-    .await
-    .unwrap();
+    let (_, body) =
+        resources::dispatch(&st, "PUT", "/admin/message-size", &json!({ "size": "64M" }))
+            .await
+            .unwrap();
     assert_eq!(
-        body.unwrap().get("effective_bytes").and_then(|v| v.as_u64()),
+        body.unwrap()
+            .get("effective_bytes")
+            .and_then(|v| v.as_u64()),
         Some(64 * 1024 * 1024)
     );
     assert_eq!(st.app.message_size.effective(), 64 * 1024 * 1024);
@@ -258,15 +264,20 @@ async fn admin_message_size_get_put_delete() {
         .await
         .unwrap();
     assert_eq!(
-        body.unwrap().get("effective_bytes").and_then(|v| v.as_u64()),
+        body.unwrap()
+            .get("effective_bytes")
+            .and_then(|v| v.as_u64()),
         Some(DEFAULT_MAX_MESSAGE_BYTES)
     );
 }
 
 #[tokio::test]
 async fn admin_message_size_put_rejects_invalid() {
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", AppConfig::default()).await;
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
+    )
+    .await;
     let err = resources::dispatch(
         &st,
         "PUT",
@@ -280,8 +291,11 @@ async fn admin_message_size_put_rejects_invalid() {
 
 #[tokio::test]
 async fn admin_settings_appendlimit_updates_effective() {
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", AppConfig::default()).await;
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
+    )
+    .await;
     resources::dispatch(
         &st,
         "POST",
@@ -295,17 +309,15 @@ async fn admin_settings_appendlimit_updates_effective() {
 
 #[tokio::test]
 async fn p9_federation_silent_dismiss_crud() {
-    let (st, _dir) =
-        test_state("secret-token-01234567890123456789012345678901", AppConfig::default()).await;
-
-    let (_, body) = resources::dispatch(
-        &st,
-        "GET",
-        "/admin/federation/silent-dismiss",
-        &json!({}),
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
     )
-    .await
-    .unwrap();
+    .await;
+
+    let (_, body) = resources::dispatch(&st, "GET", "/admin/federation/silent-dismiss", &json!({}))
+        .await
+        .unwrap();
     assert_eq!(body.unwrap().get("total").and_then(|v| v.as_u64()), Some(0));
 
     let (_, body) = resources::dispatch(

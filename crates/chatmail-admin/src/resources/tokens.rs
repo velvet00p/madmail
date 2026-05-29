@@ -20,7 +20,10 @@
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use chatmail_db::{db_execute, db_fetch_all, db_fetch_optional, db_fetch_scalar, pg_sql, schema::quota_table, DbPool};
+use chatmail_db::{
+    db_execute, db_fetch_all, db_fetch_optional, db_fetch_scalar, pg_sql, schema::quota_table,
+    DbPool,
+};
 use getrandom::getrandom;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -91,20 +94,28 @@ async fn list_tokens(st: &AdminState) -> AdminResult {
 
     let tokens: Vec<Value> = rows
         .into_iter()
-        .map(|(token, max_uses, used_count, comment, expires_at, created_at)| {
-            let pending_reservations = pending.get(&token).copied().unwrap_or(0) as i32;
-            let status = token_status(max_uses, used_count, pending_reservations, expires_at.as_deref(), now);
-            json!({
-                "token": token,
-                "max_uses": max_uses,
-                "used_count": used_count,
-                "pending_reservations": pending_reservations,
-                "comment": comment.unwrap_or_default(),
-                "created_at": created_at.unwrap_or_default(),
-                "expires_at": expires_at,
-                "status": status,
-            })
-        })
+        .map(
+            |(token, max_uses, used_count, comment, expires_at, created_at)| {
+                let pending_reservations = pending.get(&token).copied().unwrap_or(0) as i32;
+                let status = token_status(
+                    max_uses,
+                    used_count,
+                    pending_reservations,
+                    expires_at.as_deref(),
+                    now,
+                );
+                json!({
+                    "token": token,
+                    "max_uses": max_uses,
+                    "used_count": used_count,
+                    "pending_reservations": pending_reservations,
+                    "comment": comment.unwrap_or_default(),
+                    "created_at": created_at.unwrap_or_default(),
+                    "expires_at": expires_at,
+                    "status": status,
+                })
+            },
+        )
         .collect();
 
     Ok((
@@ -168,8 +179,8 @@ fn parse_sqlite_timestamp(s: &str) -> Option<SystemTime> {
 }
 
 async fn create_or_update_token(st: &AdminState, body: &Value) -> AdminResult {
-    let req: TokenCreateRequest = serde_json::from_value(body.clone())
-        .map_err(|e| (400, e.to_string()))?;
+    let req: TokenCreateRequest =
+        serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
 
     let mut token = req.token.trim().to_string();
     if token.is_empty() {
@@ -246,21 +257,19 @@ async fn create_or_update_token(st: &AdminState, body: &Value) -> AdminResult {
 }
 
 async fn delete_token(st: &AdminState, body: &Value) -> AdminResult {
-    let req: TokenDeleteRequest = serde_json::from_value(body.clone())
-        .map_err(|e| (400, e.to_string()))?;
+    let req: TokenDeleteRequest =
+        serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
     if req.token.is_empty() {
         return Err((400, "token is required".into()));
     }
 
     let affected = match &st.pool {
-        DbPool::Sqlite(p) => {
-            sqlx::query("DELETE FROM registration_tokens WHERE token = ?")
-                .bind(&req.token)
-                .execute(p)
-                .await
-                .map_err(db_err)?
-                .rows_affected()
-        }
+        DbPool::Sqlite(p) => sqlx::query("DELETE FROM registration_tokens WHERE token = ?")
+            .bind(&req.token)
+            .execute(p)
+            .await
+            .map_err(db_err)?
+            .rows_affected(),
         DbPool::Postgres(p) => {
             sqlx::query(&pg_sql("DELETE FROM registration_tokens WHERE token = ?"))
                 .bind(&req.token)
@@ -280,13 +289,12 @@ async fn delete_token(st: &AdminState, body: &Value) -> AdminResult {
 
 async fn pending_for_token(pool: &DbPool, token: &str) -> Result<i32, (u16, String)> {
     let qt = quota_table(pool).await.map_err(db_err)?;
-    let sql = format!(
-        "SELECT COUNT(*) FROM {qt} WHERE used_token = ? AND first_login_at = 1"
-    );
+    let sql = format!("SELECT COUNT(*) FROM {qt} WHERE used_token = ? AND first_login_at = 1");
     let n: i64 = db_fetch_scalar!(pool, i64, &sql, token).map_err(db_err)?;
     Ok(n as i32)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn token_json(
     token: &str,
     max_uses: i32,
@@ -357,8 +365,8 @@ fn format_system_time_sqlite(t: SystemTime) -> String {
     let d = t.duration_since(UNIX_EPOCH).unwrap_or_default();
     let secs = d.as_secs() as i64;
     let nanos = d.subsec_nanos();
-    let dt = time::OffsetDateTime::from_unix_timestamp(secs)
-        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+    let dt =
+        time::OffsetDateTime::from_unix_timestamp(secs).unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
     let dt = dt + time::Duration::nanoseconds(nanos as i64);
     dt.format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into())
@@ -368,8 +376,7 @@ fn generate_token_string() -> Result<String, String> {
     const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let mut b = [0u8; 24];
     getrandom(&mut b).map_err(|e| format!("failed to generate token: {e}"))?;
-    Ok(b
-        .iter()
+    Ok(b.iter()
         .map(|x| CHARSET[(*x as usize) % CHARSET.len()] as char)
         .collect())
 }

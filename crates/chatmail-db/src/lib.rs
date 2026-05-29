@@ -17,22 +17,22 @@
 
 pub mod account_info;
 pub mod blocklist;
-pub mod maintenance;
-pub mod quota_defaults;
 pub mod endpoint_cache;
 pub mod federation_policy;
 pub mod inbound;
 pub mod mail_ports;
+pub mod maintenance;
 pub mod message_retention;
 pub mod message_stats;
 pub mod models;
 pub mod passwords;
 pub mod pool;
+pub mod quota_defaults;
 pub mod registration_tokens;
-pub mod sharing;
 pub mod schema;
 pub mod settings;
 pub mod settings_keys;
+pub mod sharing;
 
 use std::path::Path;
 
@@ -41,20 +41,7 @@ use chatmail_types::Result;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 
-pub use mail_ports::{db_ports_from_settings, load_mail_port_overrides};
-pub use message_retention::{
-    duration_from_value, effective_message_retention, format_retention_days,
-    message_retention_enabled, message_retention_status, retention_days_from_value,
-    MessageRetentionStatus, DEFAULT_RETENTION_DAYS,
-};
-pub use message_stats::{
-    hydrate as hydrate_message_stats, increment_outbound, increment_received, increment_sent,
-    record_inbound_delivery, record_smtp_accepted, snapshot as message_stats_snapshot,
-    start_flush_task as start_message_stats_flush,
-};
 pub use account_info::{delete_quota_row, list_account_quota_info, AccountQuotaInfo};
-pub use maintenance::{list_dormant_accounts, remove_account_without_blocklist};
-pub use quota_defaults::resolve_default_quota_bytes;
 pub use blocklist::{
     block_user, is_blocked, list_blocked_users, unblock_user, ADMIN_DELETE_REASON,
     BULK_DELETE_REASON, CLI_BAN_REASON, CLI_DELETE_REASON, MANUAL_BLOCK_REASON,
@@ -69,20 +56,32 @@ pub use federation_policy::{
 pub use inbound::{
     inbound_local_recipient_allowed, is_federation_rcpt_blocked, is_federation_sender_blocked,
 };
+pub use mail_ports::{db_ports_from_settings, load_mail_port_overrides};
+pub use maintenance::{list_dormant_accounts, remove_account_without_blocklist};
+pub use message_retention::{
+    duration_from_value, effective_message_retention, format_retention_days,
+    message_retention_enabled, message_retention_status, retention_days_from_value,
+    MessageRetentionStatus, DEFAULT_RETENTION_DAYS,
+};
+pub use message_stats::{
+    hydrate as hydrate_message_stats, increment_outbound, increment_received, increment_sent,
+    record_inbound_delivery, record_smtp_accepted, snapshot as message_stats_snapshot,
+    start_flush_task as start_message_stats_flush,
+};
+pub use pool::{connect_database, pg_sql, DbBackend, DbPool};
+pub use quota_defaults::resolve_default_quota_bytes;
 pub use registration_tokens::{
     attach_registration_token, ensure_new_account_quota, record_first_login,
     reserve_registration_token, validate_registration_token, FirstLoginOutcome,
+};
+pub use settings::{
+    delete_setting, get_bool_setting, get_enabled_setting, get_setting, get_settings_many,
+    list_double_underscore_settings, seed_install_defaults, set_setting,
 };
 pub use sharing::{
     create_sharing_contact, init_sharing_db, list_sharing_contacts, normalize_sharing_url,
     remove_sharing_contact, update_sharing_contact, validate_slug, SharingContact,
 };
-pub use settings::{
-    delete_setting, get_bool_setting, get_enabled_setting, get_setting, get_settings_many,
-    list_double_underscore_settings,
-    seed_install_defaults, set_setting,
-};
-pub use pool::{connect_database, pg_sql, DbBackend, DbPool};
 
 /// Open (or create) the application database and run embedded migrations.
 pub async fn init_db_from_config(config: &DatabaseConfig) -> Result<DbPool> {

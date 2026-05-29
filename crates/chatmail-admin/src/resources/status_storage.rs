@@ -72,7 +72,9 @@ pub async fn overview(st: &AdminState, method: &str) -> AdminResult {
     Ok((200, Some(Value::Object(body))))
 }
 
-async fn build_status_body(st: &AdminState) -> Result<serde_json::Map<String, Value>, (u16, String)> {
+async fn build_status_body(
+    st: &AdminState,
+) -> Result<serde_json::Map<String, Value>, (u16, String)> {
     let users = passwords::list_users(&st.pool).await.map_err(db_err)?;
     let boot = boot_time();
     let duration = boot.elapsed().unwrap_or_default();
@@ -110,10 +112,7 @@ async fn build_status_body(st: &AdminState) -> Result<serde_json::Map<String, Va
         "shadowsocks".into(),
         json!({ "connections": ss_conns, "unique_ips": ss_ips }),
     );
-    body.insert(
-        "users".into(),
-        json!({ "registered": users.len() }),
-    );
+    body.insert("users".into(), json!({ "registered": users.len() }));
     body.insert(
         "uptime".into(),
         json!({
@@ -148,8 +147,7 @@ async fn build_status_body(st: &AdminState) -> Result<serde_json::Map<String, Va
 }
 
 async fn count_registration_tokens(pool: &DbPool) -> Result<i64, (u16, String)> {
-    db_fetch_scalar!(pool, i64, "SELECT COUNT(*) FROM registration_tokens")
-        .map_err(db_err)
+    db_fetch_scalar!(pool, i64, "SELECT COUNT(*) FROM registration_tokens").map_err(db_err)
 }
 
 /// Ports where chatmail-rs IMAP may listen (Madmail uses `__IMAP_PORT__`, not only TLS).
@@ -174,18 +172,14 @@ async fn imap_listen_ports(st: &AdminState, pool: &DbPool) -> Vec<String> {
         add(db.imap_port);
         add(db.imap_tls_port);
     }
-    add(
-        get_setting(pool, settings_keys::IMAP_PORT)
-            .await
-            .ok()
-            .flatten(),
-    );
-    add(
-        get_setting(pool, settings_keys::IMAP_TLS_PORT)
-            .await
-            .ok()
-            .flatten(),
-    );
+    add(get_setting(pool, settings_keys::IMAP_PORT)
+        .await
+        .ok()
+        .flatten());
+    add(get_setting(pool, settings_keys::IMAP_TLS_PORT)
+        .await
+        .ok()
+        .flatten());
     if let Ok(addr) = std::env::var("CHATMAIL_IMAP_ADDR") {
         if let Some(p) = port_from_listen(Some(&addr)) {
             add(Some(p.to_string()));
@@ -200,7 +194,10 @@ async fn imap_listen_ports(st: &AdminState, pool: &DbPool) -> Vec<String> {
 }
 
 fn federation_peer_key(domain: &str) -> String {
-    domain.trim().trim_matches(|c| c == '[' || c == ']').to_lowercase()
+    domain
+        .trim()
+        .trim_matches(|c| c == '[' || c == ']')
+        .to_lowercase()
 }
 
 fn is_successful_federation_peer(row: &FederationStatRow) -> bool {
@@ -277,8 +274,7 @@ fn row_mean_latency_ms(row: &FederationStatRow) -> f64 {
 fn classify_federation_peer(row: &FederationStatRow) -> Option<&'static str> {
     let failed = row_failed(row);
     let attempts = row_attempts(row);
-    let has_activity =
-        attempts > 0 || row.successful_deliveries > 0 || row.inbound_deliveries > 0;
+    let has_activity = attempts > 0 || row.successful_deliveries > 0 || row.inbound_deliveries > 0;
     if !has_activity {
         return None;
     }
@@ -467,7 +463,10 @@ fn extract_port_from_addr(addr: &str) -> String {
 fn format_boot_time_rfc3339(secs: u64) -> String {
     time::OffsetDateTime::from_unix_timestamp(secs as i64)
         .ok()
-        .and_then(|t| t.format(&time::format_description::well_known::Rfc3339).ok())
+        .and_then(|t| {
+            t.format(&time::format_description::well_known::Rfc3339)
+                .ok()
+        })
         .unwrap_or_else(|| secs.to_string())
 }
 
@@ -477,7 +476,10 @@ pub async fn storage(st: &AdminState, method: &str) -> AdminResult {
     }
     let state_size = dir_size(&st.state_dir).await;
     let db_path = effective_app_db_path(&st.state_dir, &AppConfig::default());
-    let db_size = tokio::fs::metadata(&db_path).await.map(|m| m.len()).unwrap_or(0);
+    let db_size = tokio::fs::metadata(&db_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     let mut body = serde_json::Map::new();
     if let Some(disk) = disk_usage(&st.state_dir) {
@@ -510,9 +512,9 @@ fn disk_usage(path: &Path) -> Option<serde_json::Value> {
         return None;
     }
     let stat = unsafe { stat.assume_init() };
-    let bsize = stat.f_frsize as u64;
-    let total_bytes = stat.f_blocks as u64 * bsize;
-    let avail_bytes = stat.f_bavail as u64 * bsize;
+    let bsize = stat.f_frsize;
+    let total_bytes = stat.f_blocks * bsize;
+    let avail_bytes = stat.f_bavail * bsize;
     let used_bytes = total_bytes.saturating_sub(avail_bytes);
     let percent_used = if total_bytes > 0 {
         used_bytes as f64 / total_bytes as f64 * 100.0

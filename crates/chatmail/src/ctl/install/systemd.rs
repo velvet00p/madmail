@@ -75,7 +75,11 @@ WantedBy=multi-user.target
         user = cfg.maddy_user,
         group = cfg.maddy_group,
         state_dir = cfg.state_dir.display(),
-        config_dir = cfg.config_path.parent().unwrap_or(Path::new("/etc/madmail")).display(),
+        config_dir = cfg
+            .config_path
+            .parent()
+            .unwrap_or(Path::new("/etc/madmail"))
+            .display(),
         binary = cfg.binary_path.display(),
         config = cfg.config_path.display(),
     );

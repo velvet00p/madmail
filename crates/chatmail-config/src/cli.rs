@@ -635,12 +635,8 @@ mod tests {
 
     #[test]
     fn upgrade_and_update_accept_url_or_path() {
-        let cli = Cli::try_parse_from([
-            "madmail",
-            "upgrade",
-            "https://relay.example/bin/madmail",
-        ])
-        .unwrap();
+        let cli = Cli::try_parse_from(["madmail", "upgrade", "https://relay.example/bin/madmail"])
+            .unwrap();
         assert!(matches!(
             cli.command,
             Some(Command::Upgrade { path_or_url }) if path_or_url == "https://relay.example/bin/madmail"
@@ -676,12 +672,8 @@ mod tests {
         assert_eq!(cli.args.state_dir, crate::paths::detect_default_state_dir());
         assert!(cli.is_server_mode());
 
-        let cli = Cli::try_parse_from([
-            "chatmail",
-            "--state-dir",
-            "/tmp/custom-state",
-        ])
-        .expect("parse overrides");
+        let cli = Cli::try_parse_from(["chatmail", "--state-dir", "/tmp/custom-state"])
+            .expect("parse overrides");
         assert_eq!(cli.args.state_dir, PathBuf::from("/tmp/custom-state"));
 
         let cli = Cli::try_parse_from(["chatmail", "run"]).expect("run subcommand");
@@ -758,14 +750,8 @@ mod tests {
             Some(Command::Blocklist(BlocklistCommand::List))
         ));
 
-        let cli = Cli::try_parse_from([
-            "chatmail",
-            "blocklist",
-            "add",
-            "bad@x.org",
-            "spam",
-        ])
-        .unwrap();
+        let cli =
+            Cli::try_parse_from(["chatmail", "blocklist", "add", "bad@x.org", "spam"]).unwrap();
         assert!(matches!(
             cli.command,
             Some(Command::Blocklist(BlocklistCommand::Add {

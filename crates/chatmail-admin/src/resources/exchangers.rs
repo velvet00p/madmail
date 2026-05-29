@@ -53,11 +53,14 @@ pub async fn exchangers(st: &AdminState, method: &str, body: &Value) -> AdminRes
                     })
                 })
                 .collect();
-            Ok((200, Some(json!({ "exchangers": list, "total": list.len() }))))
+            Ok((
+                200,
+                Some(json!({ "exchangers": list, "total": list.len() })),
+            ))
         }
         "POST" => {
-            let req: ExchangerBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: ExchangerBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             let interval = req.poll_interval.unwrap_or(60);
             chatmail_db::db_execute!(
                 &st.pool,
@@ -72,8 +75,8 @@ pub async fn exchangers(st: &AdminState, method: &str, body: &Value) -> AdminRes
             Ok((201, Some(json!({ "name": req.name }))))
         }
         "PUT" => {
-            let req: ExchangerBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: ExchangerBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if let Some(en) = req.enabled {
                 chatmail_db::db_execute!(
                     &st.pool,
@@ -97,8 +100,8 @@ pub async fn exchangers(st: &AdminState, method: &str, body: &Value) -> AdminRes
             Ok((200, Some(json!({ "updated": req.name }))))
         }
         "DELETE" => {
-            let req: ExchangerBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: ExchangerBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             chatmail_db::db_execute!(
                 &st.pool,
                 "DELETE FROM exchangers WHERE name = ?",

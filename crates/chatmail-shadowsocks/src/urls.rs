@@ -109,10 +109,17 @@ fn resolve_host(rt: &ShadowsocksRuntime, host_hint: &str) -> String {
     if host.is_empty() || host == "0.0.0.0" || host == "::" || host == "[::]" {
         let hint = host_hint.trim();
         if hint.is_empty() {
-            return rt.mail_domain.trim_matches(|c| c == '[' || c == ']').to_string();
+            return rt
+                .mail_domain
+                .trim_matches(|c| c == '[' || c == ']')
+                .to_string();
         }
         let (h, _) = split_host_port(hint);
-        if h.is_empty() { hint.to_string() } else { h }
+        if h.is_empty() {
+            hint.to_string()
+        } else {
+            h
+        }
     } else {
         host.trim_matches(|c| c == '[' || c == ']').to_string()
     }
@@ -170,7 +177,13 @@ fn v2ray_ng_ws_json(host: &str, port: u16, cipher: &str, password: &str, allowed
     )
 }
 
-fn v2ray_ng_grpc_json(host: &str, port: u16, cipher: &str, password: &str, allowed: &str) -> String {
+fn v2ray_ng_grpc_json(
+    host: &str,
+    port: u16,
+    cipher: &str,
+    password: &str,
+    allowed: &str,
+) -> String {
     format!(
         r#"{{
   "dns": {{"servers": ["1.1.1.1", "8.8.8.8"]}},

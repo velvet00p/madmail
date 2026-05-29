@@ -22,8 +22,8 @@ use axum::middleware;
 use axum::routing::post;
 use axum::Router;
 use chatmail_config::AppConfig;
-use chatmail_state::AppState;
 use chatmail_db::DbPool;
+use chatmail_state::AppState;
 use tokio::sync::mpsc;
 
 use crate::auth::AuthGate;

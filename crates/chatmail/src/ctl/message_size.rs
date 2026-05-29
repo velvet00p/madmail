@@ -18,7 +18,7 @@
 //! `chatmail message-size` — `appendlimit` / `max_message_size` (`__APPENDLIMIT__`, `__MAX_MESSAGE_SIZE__`).
 
 use chatmail_config::cli::MessageSizeCommand;
-use chatmail_config::{format_data_size, parse_data_size, Args, AppConfig};
+use chatmail_config::{format_data_size, parse_data_size, AppConfig, Args};
 use chatmail_db::{delete_setting, get_setting, set_setting, settings_keys};
 use chatmail_types::Result;
 
@@ -39,11 +39,8 @@ async fn status(ctx: &CtlContext, pool: &chatmail_db::DbPool) -> Result<()> {
     let append = get_setting(pool, settings_keys::APPENDLIMIT).await?;
     let max = get_setting(pool, settings_keys::MAX_MESSAGE_SIZE).await?;
     let config_eff = chatmail_config::effective_max_message_bytes(&ctx.config);
-    let effective = chatmail_config::resolve_max_message_bytes(
-        config_eff,
-        append.as_deref(),
-        max.as_deref(),
-    )?;
+    let effective =
+        chatmail_config::resolve_max_message_bytes(config_eff, append.as_deref(), max.as_deref())?;
 
     println!();
     println!(
@@ -80,8 +77,7 @@ async fn set_size(ctx: &CtlContext, pool: &chatmail_db::DbPool, size: &str) -> R
     set_setting(pool, settings_keys::APPENDLIMIT, size).await?;
     set_setting(pool, settings_keys::MAX_MESSAGE_SIZE, size).await?;
     let config_eff = chatmail_config::effective_max_message_bytes(&ctx.config);
-    let effective =
-        chatmail_config::resolve_max_message_bytes(config_eff, Some(size), Some(size))?;
+    let effective = chatmail_config::resolve_max_message_bytes(config_eff, Some(size), Some(size))?;
     println!(
         "📦 Message size limit set to {size} (effective {} bytes)",
         effective

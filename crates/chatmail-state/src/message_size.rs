@@ -61,12 +61,7 @@ impl MessageSizeLimit {
     }
 
     /// Set both DB keys to the same value and refresh the in-memory cap.
-    pub async fn set_limit(
-        &self,
-        pool: &DbPool,
-        config: &AppConfig,
-        size: &str,
-    ) -> Result<u64> {
+    pub async fn set_limit(&self, pool: &DbPool, config: &AppConfig, size: &str) -> Result<u64> {
         parse_data_size(size)?;
         set_setting(pool, settings_keys::APPENDLIMIT, size).await?;
         set_setting(pool, settings_keys::MAX_MESSAGE_SIZE, size).await?;

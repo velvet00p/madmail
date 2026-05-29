@@ -19,7 +19,9 @@ pub mod connection_stats;
 pub mod server;
 pub mod session;
 
-pub use connection_stats::{snapshot as imap_connection_snapshot, snapshot_peers as imap_connection_peers};
+pub use connection_stats::{
+    snapshot as imap_connection_snapshot, snapshot_peers as imap_connection_peers,
+};
 pub use server::run_imap_listener;
 pub use session::{
     capability_string, iroh_metadata_response, turn_metadata_response, ImapSession,

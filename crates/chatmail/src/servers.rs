@@ -21,9 +21,9 @@ use std::sync::Arc;
 use axum::Router;
 use chatmail_admin::{admin_router, AdminState};
 use chatmail_config::AppConfig;
+use chatmail_db::DbPool;
 use chatmail_state::AppState;
 use chatmail_types::Result;
-use chatmail_db::DbPool;
 use chatmail_www::{www_router, WwwState};
 use tokio::sync::mpsc;
 

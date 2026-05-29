@@ -48,7 +48,9 @@ pub fn parse_turn_metadata(metadata: &str) -> Result<ParsedTurnMetadata, ParseTu
     let (hostname, rest) = metadata
         .split_once(':')
         .ok_or(ParseTurnMetadataError::MissingHostname)?;
-    let (port, rest) = rest.split_once(':').ok_or(ParseTurnMetadataError::MissingPort)?;
+    let (port, rest) = rest
+        .split_once(':')
+        .ok_or(ParseTurnMetadataError::MissingPort)?;
     let port = port
         .parse()
         .map_err(|_| ParseTurnMetadataError::InvalidPort)?;

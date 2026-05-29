@@ -117,10 +117,7 @@ mod tests {
         set_no_log(&reload_handle);
         events.lock().unwrap().clear();
         info!(target: "test", "hidden");
-        assert!(
-            events.lock().unwrap().is_empty(),
-            "no output after No-Log"
-        );
+        assert!(events.lock().unwrap().is_empty(), "no output after No-Log");
 
         set_info_log(&reload_handle);
         events.lock().unwrap().clear();

@@ -19,16 +19,16 @@ use std::sync::Arc;
 
 use axum::routing::post;
 use axum::Router;
+use chatmail_db::DbPool;
 use chatmail_state::AppState;
 use chatmail_types::Result;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder;
 use hyper_util::service::TowerToHyperService;
 use rustls::ServerConfig;
-use chatmail_db::DbPool;
 use tokio::net::TcpListener;
-use tokio_util::sync::CancellationToken;
 use tokio_rustls::TlsAcceptor;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::mxdeliv::{mxdeliv_handler, FedState};
@@ -39,6 +39,7 @@ pub fn federation_router(state: FedState) -> Router {
         .with_state(state)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_http_listener(
     addr: &str,
     cancel: CancellationToken,

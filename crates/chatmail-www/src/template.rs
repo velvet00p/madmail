@@ -78,6 +78,12 @@ pub struct TemplateEngine {
     external_root: Option<std::path::PathBuf>,
 }
 
+impl Default for TemplateEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TemplateEngine {
     /// Embedded templates only (tests / default).
     pub fn new() -> Self {
@@ -155,10 +161,7 @@ impl TemplateEngine {
     fn render_external(root: &Path, name: &str, ctx: &WwwContext) -> Result<String> {
         let path = root.join(name);
         let src = std::fs::read_to_string(&path).map_err(|e| {
-            chatmail_types::ChatmailError::config(format!(
-                "www template {}: {e}",
-                path.display()
-            ))
+            chatmail_types::ChatmailError::config(format!("www template {}: {e}", path.display()))
         })?;
         let mut env = Environment::new();
         add_filters(&mut env);
@@ -219,7 +222,11 @@ fn format_bytes(b: i64) -> String {
         exp += 1;
     }
     let div = UNIT.pow(exp as u32);
-    format!("{:.1} {}B", b as f64 / div as f64, b"KMGTPE"[exp as usize - 1] as char)
+    format!(
+        "{:.1} {}B",
+        b as f64 / div as f64,
+        b"KMGTPE"[exp as usize - 1] as char
+    )
 }
 
 fn safe_html(s: String) -> minijinja::Value {
@@ -267,8 +274,8 @@ pub async fn build_context(
         .unwrap_or_default();
 
     let default_quota = resolve_default_quota_bytes(pool, config).await? as i64;
-    let message_retention_line = format_retention_label(config)
-        .map(|label| retention_info_line(&cached.language, &label));
+    let message_retention_line =
+        format_retention_label(config).map(|label| retention_info_line(&cached.language, &label));
 
     Ok(WwwContext {
         MailDomain: mail_domain,

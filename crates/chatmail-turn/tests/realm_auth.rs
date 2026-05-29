@@ -46,13 +46,16 @@ async fn turn_allocate_rejects_wrong_realm() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let username = (now_unix() + 3600).to_string();
-    let err = turn_allocate(listen, secret, "correct-realm", &username, Some("wrong-realm"))
-        .await
-        .expect_err("wrong realm must fail allocate");
-    assert!(
-        !err.is_empty(),
-        "unexpected success message: {err}"
-    );
+    let err = turn_allocate(
+        listen,
+        secret,
+        "correct-realm",
+        &username,
+        Some("wrong-realm"),
+    )
+    .await
+    .expect_err("wrong realm must fail allocate");
+    assert!(!err.is_empty(), "unexpected success message: {err}");
 }
 
 #[tokio::test]
@@ -63,14 +66,16 @@ async fn turn_metadata_credentials_match_server_realm() {
         let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         s.local_addr().unwrap()
     };
-    let _srv = spawn_turn_server_with_opts(secret, realm, listen, listen, TurnSpawnOpts::for_tests())
-        .await
-        .unwrap();
+    let _srv =
+        spawn_turn_server_with_opts(secret, realm, listen, listen, TurnSpawnOpts::for_tests())
+            .await
+            .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let now = now_unix();
-    let line = chatmail_turn::turn_metadata_line("mail.example.com", listen.port(), secret, 3600, now)
-        .unwrap();
+    let line =
+        chatmail_turn::turn_metadata_line("mail.example.com", listen.port(), secret, 3600, now)
+            .unwrap();
     let parsed = chatmail_turn::parse_turn_metadata(&line).unwrap();
     let relay = turn_allocate(
         listen,
@@ -92,9 +97,10 @@ async fn turn_allocate_rejects_bad_password() {
         let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         s.local_addr().unwrap()
     };
-    let _srv = spawn_turn_server_with_opts(secret, realm, listen, listen, TurnSpawnOpts::for_tests())
-        .await
-        .unwrap();
+    let _srv =
+        spawn_turn_server_with_opts(secret, realm, listen, listen, TurnSpawnOpts::for_tests())
+            .await
+            .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let username = (now_unix() + 3600).to_string();

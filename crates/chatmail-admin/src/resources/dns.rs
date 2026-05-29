@@ -59,8 +59,8 @@ pub async fn dns(st: &AdminState, method: &str, body: &Value) -> AdminResult {
             ))
         }
         "POST" => {
-            let req: DnsEntry = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: DnsEntry =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             chatmail_db::db_execute!(
                 &st.pool,
                 "INSERT INTO dns_overrides (lookup_key, target_host, comment)
@@ -83,8 +83,8 @@ pub async fn dns(st: &AdminState, method: &str, body: &Value) -> AdminResult {
             ))
         }
         "DELETE" => {
-            let req: DnsDelete = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: DnsDelete =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             chatmail_db::db_execute!(
                 &st.pool,
                 "DELETE FROM dns_overrides WHERE lookup_key = ?",

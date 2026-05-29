@@ -17,8 +17,8 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chatmail_types::{ChatmailError, Result};
-use sha_crypt::{PasswordVerifier, ShaCrypt};
 use sha2::{Digest, Sha256};
+use sha_crypt::{PasswordVerifier, ShaCrypt};
 
 /// Hash a password for storage (`bcrypt:...` or `argon2:...`).
 pub fn hash_password(password: &str) -> Result<String> {
@@ -81,8 +81,7 @@ fn verify_argon2(password: &str, spec: &str) -> std::result::Result<bool, ()> {
     let threads: u32 = parts[2].parse().map_err(|_| ())?;
     let salt = STANDARD.decode(parts[3]).map_err(|_| ())?;
     let expected = STANDARD.decode(parts[4]).map_err(|_| ())?;
-    let params =
-        argon2::Params::new(memory, threads, 1, Some(expected.len())).map_err(|_| ())?;
+    let params = argon2::Params::new(memory, threads, 1, Some(expected.len())).map_err(|_| ())?;
     let argon2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
     let mut output = vec![0u8; expected.len()];
     argon2
@@ -97,9 +96,7 @@ fn verify_sha_crypt(password: &str, stored: &str) -> std::result::Result<bool, (
     } else {
         ShaCrypt::SHA256
     };
-    Ok(hasher
-        .verify_password(password.as_bytes(), stored)
-        .is_ok())
+    Ok(hasher.verify_password(password.as_bytes(), stored).is_ok())
 }
 
 #[cfg(test)]

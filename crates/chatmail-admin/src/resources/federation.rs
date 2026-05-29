@@ -18,12 +18,12 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::{status_storage::db_err, AdminResult};
+use crate::AdminState;
 use chatmail_db::{
     federation_policy_label, get_bool_setting, set_federation_policy_label, set_setting,
     settings_keys,
 };
-use super::{status_storage::db_err, AdminResult};
-use crate::AdminState;
 
 #[derive(Deserialize)]
 struct FederationPost {
@@ -37,10 +37,9 @@ struct DomainBody {
 }
 
 async fn federation_settings_body(st: &AdminState) -> Result<Value, (u16, String)> {
-    let enabled =
-        get_bool_setting(&st.pool, settings_keys::FEDERATION_ENABLED, false)
-            .await
-            .map_err(db_err)?;
+    let enabled = get_bool_setting(&st.pool, settings_keys::FEDERATION_ENABLED, false)
+        .await
+        .map_err(db_err)?;
     let policy = federation_policy_label(&st.pool).await.map_err(db_err)?;
     Ok(json!({
         "enabled": enabled,
@@ -52,8 +51,8 @@ pub async fn policy(st: &AdminState, method: &str, body: &Value) -> AdminResult 
     match method {
         "GET" => Ok((200, Some(federation_settings_body(st).await?))),
         "POST" => {
-            let req: FederationPost = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: FederationPost =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if let Some(en) = req.enabled {
                 set_setting(
                     &st.pool,
@@ -90,8 +89,8 @@ pub async fn rules(st: &AdminState, method: &str, body: &Value) -> AdminResult {
             Ok((200, Some(json!({ "rules": rules, "total": rules.len() }))))
         }
         "POST" => {
-            let req: DomainBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: DomainBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if req.domain.trim().is_empty() {
                 return Err((400, "domain is required".into()));
             }
@@ -104,8 +103,8 @@ pub async fn rules(st: &AdminState, method: &str, body: &Value) -> AdminResult {
             Ok((200, Some(json!({ "domain": req.domain, "total": total }))))
         }
         "DELETE" => {
-            let req: DomainBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: DomainBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             st.app
                 .federation_policy
                 .remove_rule(&st.pool, &req.domain)
@@ -140,8 +139,8 @@ pub async fn silent_dismiss(st: &AdminState, method: &str, body: &Value) -> Admi
             ))
         }
         "POST" => {
-            let req: DomainBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: DomainBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if req.domain.trim().is_empty() {
                 return Err((400, "domain is required".into()));
             }
@@ -154,8 +153,8 @@ pub async fn silent_dismiss(st: &AdminState, method: &str, body: &Value) -> Admi
             Ok((200, Some(json!({ "domain": req.domain, "total": total }))))
         }
         "DELETE" => {
-            let req: DomainBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: DomainBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if req.domain.trim().is_empty() {
                 return Err((400, "domain is required".into()));
             }

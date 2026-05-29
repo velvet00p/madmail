@@ -30,8 +30,8 @@ use chatmail_fed::run_http_listener;
 use chatmail_imap::run_imap_listener;
 use chatmail_smtp::run_smtp_listener;
 use chatmail_state::AppState;
-use chatmail_tls::load_server_config;
 use chatmail_tasks::MaintenanceHandle;
+use chatmail_tls::load_server_config;
 use chatmail_types::Result;
 use rustls::ServerConfig;
 use tokio::net::TcpListener;
@@ -45,9 +45,9 @@ use crate::logging::boot_error;
 use crate::servers::{build_http_extra, extend_dev_local_aliases};
 
 use chatmail_imap::ImapSessionConfig;
-use chatmail_smtp::SmtpSessionConfig;
 use chatmail_iroh::IrohRelayHandle;
 use chatmail_shadowsocks::ShadowsocksHandle;
+use chatmail_smtp::SmtpSessionConfig;
 use chatmail_turn::TurnServerHandle;
 
 struct ListenerSlot {
@@ -172,13 +172,9 @@ impl ServerSupervisor {
             crate::turn_boot::turn_discovery(&pool_turn, file_config, &hostname).await?;
         let iroh_discovery =
             crate::iroh_boot::iroh_discovery(&pool_turn, file_config, &hostname).await?;
-        let iroh_relay = crate::iroh_boot::start_iroh_relay(
-            &pool_turn,
-            file_config,
-            state_dir,
-            &hostname,
-        )
-        .await?;
+        let iroh_relay =
+            crate::iroh_boot::start_iroh_relay(&pool_turn, file_config, state_dir, &hostname)
+                .await?;
         let ss_server = crate::ss_boot::start_shadowsocks_server(
             &pool_turn,
             file_config,
@@ -195,11 +191,8 @@ impl ServerSupervisor {
             iroh: iroh_discovery,
         };
 
-        let maintenance = chatmail_tasks::spawn_maintenance_scheduler(
-            pool.clone(),
-            state_dir,
-            file_config,
-        );
+        let maintenance =
+            chatmail_tasks::spawn_maintenance_scheduler(pool.clone(), state_dir, file_config);
 
         let inner = Arc::new(SupervisorInner {
             pool,
@@ -263,13 +256,9 @@ impl SupervisorInner {
         })
     }
 
-    fn load_tls_config(
-        &self,
-        addrs: &ResolvedAddrs,
-    ) -> Result<Option<Arc<ServerConfig>>> {
-        let needs_tls = addrs.imap_tls.is_some()
-            || addrs.submission_tls.is_some()
-            || addrs.http_tls.is_some();
+    fn load_tls_config(&self, addrs: &ResolvedAddrs) -> Result<Option<Arc<ServerConfig>>> {
+        let needs_tls =
+            addrs.imap_tls.is_some() || addrs.submission_tls.is_some() || addrs.http_tls.is_some();
         if !needs_tls {
             return Ok(None);
         }
@@ -363,7 +352,9 @@ impl SupervisorInner {
 
         let submission_tls_slot = addrs.submission_tls.map(|addr| {
             let cancel = CancellationToken::new();
-            let tls = tls_config.clone().expect("tls config when submission tls listen set");
+            let tls = tls_config
+                .clone()
+                .expect("tls config when submission tls listen set");
             let join = spawn_smtp(
                 addr,
                 cancel.clone(),
@@ -390,7 +381,9 @@ impl SupervisorInner {
 
         let imap_tls_slot = addrs.imap_tls.map(|addr| {
             let cancel = CancellationToken::new();
-            let tls = tls_config.clone().expect("tls config when imap tls listen set");
+            let tls = tls_config
+                .clone()
+                .expect("tls config when imap tls listen set");
             let join = spawn_imap(
                 addr,
                 cancel.clone(),
@@ -420,7 +413,9 @@ impl SupervisorInner {
 
         let http_tls_slot = addrs.http_tls.map(|addr| {
             let cancel = CancellationToken::new();
-            let tls = tls_config.clone().expect("tls config when http tls listen set");
+            let tls = tls_config
+                .clone()
+                .expect("tls config when http tls listen set");
             let join = spawn_http(
                 addr,
                 cancel.clone(),
@@ -460,8 +455,7 @@ impl SupervisorInner {
         let addr_owned = addr.to_string();
         let cancel_metrics = cancel.clone();
         let metrics_task = async move {
-            let _ =
-                chatmail_metrics::run_openmetrics_listener(&addr_owned, cancel_metrics).await;
+            let _ = chatmail_metrics::run_openmetrics_listener(&addr_owned, cancel_metrics).await;
         };
         let cancel_queue = cancel.clone();
         let queue_task = async move {
@@ -557,12 +551,8 @@ impl SupervisorInner {
     /// Apply admin TURN toggle / DB overrides: stop relay, refresh IMAP discovery, maybe restart.
     async fn reload_turn(&self) -> Result<()> {
         let hostname = self.imap_cfg.lock().await.hostname.clone();
-        let discovery = crate::turn_boot::turn_discovery(
-            &self.pool,
-            &self.file_config,
-            &hostname,
-        )
-        .await?;
+        let discovery =
+            crate::turn_boot::turn_discovery(&self.pool, &self.file_config, &hostname).await?;
         {
             let mut imap = self.imap_cfg.lock().await;
             imap.turn = discovery;
@@ -572,8 +562,7 @@ impl SupervisorInner {
             *turn = None;
         }
         let started =
-            crate::turn_boot::start_turn_server(&self.pool, &self.file_config, &hostname)
-                .await?;
+            crate::turn_boot::start_turn_server(&self.pool, &self.file_config, &hostname).await?;
         *self.turn_server.lock().await = started;
         Ok(())
     }
@@ -581,12 +570,8 @@ impl SupervisorInner {
     /// Apply admin Iroh toggle / DB overrides: stop relay, refresh IMAP discovery, maybe restart.
     async fn reload_iroh(&self) -> Result<()> {
         let hostname = self.imap_cfg.lock().await.hostname.clone();
-        let discovery = crate::iroh_boot::iroh_discovery(
-            &self.pool,
-            &self.file_config,
-            &hostname,
-        )
-        .await?;
+        let discovery =
+            crate::iroh_boot::iroh_discovery(&self.pool, &self.file_config, &hostname).await?;
         {
             let mut imap = self.imap_cfg.lock().await;
             imap.iroh = discovery;
@@ -651,7 +636,6 @@ async fn await_optional(slot: Option<ListenerSlot>) {
     }
 }
 
-
 fn spawn_smtp(
     addr: String,
     cancel: CancellationToken,
@@ -678,6 +662,7 @@ fn spawn_imap(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_http(
     addr: String,
     cancel: CancellationToken,

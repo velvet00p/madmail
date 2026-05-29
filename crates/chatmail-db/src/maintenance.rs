@@ -78,7 +78,9 @@ mod tests {
     #[tokio::test]
     async fn remove_account_without_blocklist_clears_db() {
         let pool = init_memory_db().await.unwrap();
-        passwords::create_user(&pool, "gone@x.org", "hash").await.unwrap();
+        passwords::create_user(&pool, "gone@x.org", "hash")
+            .await
+            .unwrap();
         let DbPool::Sqlite(p) = &pool else {
             panic!("memory db is sqlite");
         };
@@ -99,6 +101,8 @@ mod tests {
             .unwrap();
         assert!(!passwords::user_exists(&pool, "gone@x.org").await.unwrap());
         assert!(!mail_root.exists());
-        assert!(!crate::blocklist::is_blocked(&pool, "gone@x.org").await.unwrap());
+        assert!(!crate::blocklist::is_blocked(&pool, "gone@x.org")
+            .await
+            .unwrap());
     }
 }

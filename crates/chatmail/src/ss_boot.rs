@@ -20,8 +20,8 @@
 use chatmail_config::AppConfig;
 use chatmail_db::DbPool;
 use chatmail_shadowsocks::{
-    resolve_runtime, spawn_shadowsocks_server, ss_runtime_enabled as ss_enabled,
-    ShadowsocksHandle, ShadowsocksRuntime,
+    resolve_runtime, spawn_shadowsocks_server, ss_runtime_enabled as ss_enabled, ShadowsocksHandle,
+    ShadowsocksRuntime,
 };
 use chatmail_types::Result;
 
@@ -48,8 +48,7 @@ pub async fn start_shadowsocks_server(
         tracing::info!("Shadowsocks disabled (not configured or admin toggle)");
         return Ok(None);
     }
-    let rt: ShadowsocksRuntime =
-        resolve_runtime(pool, file_config, mail_domain, state_dir).await?;
+    let rt: ShadowsocksRuntime = resolve_runtime(pool, file_config, mail_domain, state_dir).await?;
     let handle = spawn_shadowsocks_server(rt).await?;
     Ok(Some(handle))
 }

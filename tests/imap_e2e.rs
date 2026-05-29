@@ -29,7 +29,14 @@ async fn imap_e2e_greeting_and_capability() {
     assert!(c.transcript().contains("IMAP4rev1 ready"));
 
     let r = c.command("c001 CAPABILITY").await;
-    for cap in ["IMAP4rev1", "IDLE", "QUOTA", "MOVE", "AUTH=PLAIN", "XCHATMAIL"] {
+    for cap in [
+        "IMAP4rev1",
+        "IDLE",
+        "QUOTA",
+        "MOVE",
+        "AUTH=PLAIN",
+        "XCHATMAIL",
+    ] {
         assert!(r.contains(cap), "missing capability {cap}: {r}");
     }
 }
@@ -55,7 +62,10 @@ async fn imap_e2e_login_success_and_failure() {
     create_user(&srv.pool, USER, PASS).await;
 
     let mut ok = ImapClient::connect(srv.imap_addr).await;
-    assert!(ok.command(&format!("a001 LOGIN {USER} {PASS}")).await.contains("OK LOGIN"));
+    assert!(ok
+        .command(&format!("a001 LOGIN {USER} {PASS}"))
+        .await
+        .contains("OK LOGIN"));
 
     let mut bad = ImapClient::connect(srv.imap_addr).await;
     let r = bad.command(&format!("b001 LOGIN {USER} wrong-pass")).await;
@@ -101,7 +111,9 @@ async fn imap_e2e_list_select_examine_status_empty_inbox() {
     let exa = c.command("a004 EXAMINE INBOX").await;
     assert!(exa.contains("EXISTS"), "EXAMINE: {exa}");
 
-    let st = c.command("a005 STATUS INBOX (MESSAGES UIDNEXT UIDVALIDITY UNSEEN)").await;
+    let st = c
+        .command("a005 STATUS INBOX (MESSAGES UIDNEXT UIDVALIDITY UNSEEN)")
+        .await;
     assert!(st.contains("STATUS"), "STATUS: {st}");
     assert!(st.contains("UIDNEXT"), "STATUS: {st}");
 }
@@ -123,7 +135,10 @@ async fn imap_e2e_fetch_header_fields_and_body() {
         .command("f003 UID FETCH 1 (UID RFC822.SIZE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID FROM)])")
         .await;
     assert!(hdr.contains("RFC822.SIZE"), "header fetch: {hdr}");
-    assert!(hdr.contains("MESSAGE-ID") || hdr.contains("From:"), "headers: {hdr}");
+    assert!(
+        hdr.contains("MESSAGE-ID") || hdr.contains("From:"),
+        "headers: {hdr}"
+    );
 
     let body = c.command("f004 UID FETCH 1 (BODY.PEEK[])").await;
     assert!(
@@ -146,7 +161,10 @@ async fn imap_e2e_fetch_sequence_set() {
     assert!(sel.contains("* 2 EXISTS"), "two messages: {sel}");
 
     let fetch = c.command("u003 UID FETCH 1:2 (UID RFC822.SIZE)").await;
-    assert!(fetch.contains("UID 1") || fetch.contains("UID 2"), "{fetch}");
+    assert!(
+        fetch.contains("UID 1") || fetch.contains("UID 2"),
+        "{fetch}"
+    );
     assert!(fetch.contains("RFC822.SIZE"), "{fetch}");
 }
 
@@ -162,10 +180,7 @@ async fn imap_e2e_append_encrypted_visible_after_select() {
     let mut c = ImapClient::connect(srv.imap_addr).await;
     c.command(&format!("p001 LOGIN {USER} {PASS}")).await;
     let append = c
-        .append_literal(
-            &format!("p002 APPEND INBOX {{{}}}", body.len()),
-            &body,
-        )
+        .append_literal(&format!("p002 APPEND INBOX {{{}}}", body.len()), &body)
         .await;
     assert!(append.contains("OK APPEND"), "append: {append}");
 
@@ -183,10 +198,7 @@ async fn imap_e2e_append_plaintext_rejected() {
     let mut c = ImapClient::connect(srv.imap_addr).await;
     c.command(&format!("e001 LOGIN {USER} {PASS}")).await;
     let r = c
-        .append_literal(
-            &format!("e002 APPEND INBOX {{{}}}", plain.len()),
-            plain,
-        )
+        .append_literal(&format!("e002 APPEND INBOX {{{}}}", plain.len()), plain)
         .await;
     assert!(r.contains("NO [ENCRYPTED]"), "plaintext append: {r}");
 }
@@ -207,7 +219,10 @@ async fn imap_e2e_getquota_and_getquotaroot() {
     assert!(quota.contains("STORAGE"), "GETQUOTA storage: {quota}");
 
     let root = c.command("q003 GETQUOTAROOT INBOX").await;
-    assert!(root.contains("QUOTA") || root.contains("OK GETQUOTA"), "GETQUOTAROOT: {root}");
+    assert!(
+        root.contains("QUOTA") || root.contains("OK GETQUOTA"),
+        "GETQUOTAROOT: {root}"
+    );
 }
 
 // --- METADATA TURN: see tests/turn_e2e.rs (Phase 9) ---
@@ -261,9 +276,7 @@ async fn imap_e2e_idle_tagged_done_ends_session() {
     c.command("t002 SELECT INBOX").await;
     c.idle_start("t003").await;
     c.send_line("t003 DONE").await;
-    let end = c
-        .read_until("t003 OK", Duration::from_secs(2))
-        .await;
+    let end = c.read_until("t003 OK", Duration::from_secs(2)).await;
     assert!(end.contains("IDLE terminated"), "tagged DONE: {end}");
 }
 
@@ -284,15 +297,7 @@ async fn imap_e2e_idle_after_smtp_local_delivery() {
     c.command("x002 SELECT INBOX").await;
     c.idle_start("x003").await;
 
-    let smtp_log = smtp_submit(
-        srv.smtp_addr,
-        PEER,
-        USER,
-        PEER,
-        PASS,
-        &body,
-    )
-    .await;
+    let smtp_log = smtp_submit(srv.smtp_addr, PEER, USER, PEER, PASS, &body).await;
     assert!(smtp_log.contains("250 2.0.0 OK"), "smtp: {smtp_log}");
 
     let push = c.read_until("EXISTS", Duration::from_secs(3)).await;
@@ -390,7 +395,10 @@ async fn imap_e2e_delta_chat_sync_session() {
     let caps = c.command("dc01 CAPABILITY").await;
     assert!(caps.contains("IDLE") && caps.contains("XCHATMAIL"));
 
-    assert!(c.command(&format!("dc02 LOGIN {USER} {PASS}")).await.contains("OK LOGIN"));
+    assert!(c
+        .command(&format!("dc02 LOGIN {USER} {PASS}"))
+        .await
+        .contains("OK LOGIN"));
 
     assert!(c.command("dc03 LIST \"\" \"*\"").await.contains("INBOX"));
 

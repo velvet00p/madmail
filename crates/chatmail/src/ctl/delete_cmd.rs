@@ -27,21 +27,12 @@ use super::account_ops::delete_account_full;
 use super::context::CtlContext;
 use super::util::confirm;
 
-pub async fn delete(
-    args: &Args,
-    username: &str,
-    yes: bool,
-    reason: &str,
-) -> Result<()> {
+pub async fn delete(args: &Args, username: &str, yes: bool, reason: &str) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let pool = ctx.open_pool().await?;
     let mailbox = MailboxStore::new(&ctx.state_dir);
 
-    let host = ctx
-        .config
-        .hostname
-        .as_deref()
-        .unwrap_or("127.0.0.1");
+    let host = ctx.config.hostname.as_deref().unwrap_or("127.0.0.1");
     let domain = ctx.config.effective_registration_domain(Some(host));
     let u = if username.trim().contains('@') {
         normalize_username(username.trim())?

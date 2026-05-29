@@ -33,8 +33,8 @@ pub async fn turn_allocate(
 }
 
 pub const STUN_BINDING_REQUEST: &[u8] = &[
-    0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xA4, 0x42, 0x45, 0x58, 0x65, 0x61, 0x57, 0x53, 0x5A,
-    0x6E, 0x57, 0x35, 0x76, 0x46,
+    0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xA4, 0x42, 0x45, 0x58, 0x65, 0x61, 0x57, 0x53, 0x5A, 0x6E,
+    0x57, 0x35, 0x76, 0x46,
 ];
 
 pub async fn exchange(
@@ -47,9 +47,12 @@ pub async fn exchange(
         .await
         .map_err(|e| e.to_string())?;
     let mut buf = [0u8; 2048];
-    let (n, from) = tokio::time::timeout(std::time::Duration::from_secs(3), socket.recv_from(&mut buf))
-        .await
-        .map_err(|_| "recv timeout".to_string())?
-        .map_err(|e| e.to_string())?;
+    let (n, from) = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        socket.recv_from(&mut buf),
+    )
+    .await
+    .map_err(|_| "recv timeout".to_string())?
+    .map_err(|e| e.to_string())?;
     Ok((buf[..n].to_vec(), from))
 }

@@ -22,11 +22,11 @@ use chatmail_config::cli::{
     RegistrationCommand, RegistrationTokensCommand, ServiceToggleCommand, SharingCommand,
 };
 use chatmail_config::{Cli, Command};
-use clap::Parser;
 use chatmail_db::{
     federation_policy_label, get_bool_setting, get_endpoint_override, get_setting, init_sharing_db,
     list_sharing_contacts, settings_keys,
 };
+use clap::Parser;
 
 use super::dispatch;
 use super::test_harness::{parse_cli, setup_ctl_env};
@@ -59,13 +59,19 @@ async fn dispatch_language_set_and_reset() {
     let cli = parse_cli(dir.path(), &["language", "set", "fa"]);
     dispatch(&cli).await.unwrap();
     assert_eq!(
-        get_setting(&pool, settings_keys::LANGUAGE).await.unwrap().as_deref(),
+        get_setting(&pool, settings_keys::LANGUAGE)
+            .await
+            .unwrap()
+            .as_deref(),
         Some("fa")
     );
 
     let cli = parse_cli(dir.path(), &["language", "reset"]);
     dispatch(&cli).await.unwrap();
-    assert!(get_setting(&pool, settings_keys::LANGUAGE).await.unwrap().is_none());
+    assert!(get_setting(&pool, settings_keys::LANGUAGE)
+        .await
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test]
@@ -177,7 +183,10 @@ async fn dispatch_registration_tokens_create_and_delete() {
     let cli = parse_cli(dir.path(), &["registration-tokens", "list"]);
     dispatch(&cli).await.unwrap();
 
-    let cli = parse_cli(dir.path(), &["registration-tokens", "delete", "test-invite"]);
+    let cli = parse_cli(
+        dir.path(),
+        &["registration-tokens", "delete", "test-invite"],
+    );
     dispatch(&cli).await.unwrap();
 }
 
@@ -216,13 +225,19 @@ async fn dispatch_port_set_and_reset() {
     let cli = parse_cli(dir.path(), &["port", "imap", "set", "1143"]);
     dispatch(&cli).await.unwrap();
     assert_eq!(
-        get_setting(&pool, settings_keys::IMAP_PORT).await.unwrap().as_deref(),
+        get_setting(&pool, settings_keys::IMAP_PORT)
+            .await
+            .unwrap()
+            .as_deref(),
         Some("1143")
     );
 
     let cli = parse_cli(dir.path(), &["port", "imap", "reset"]);
     dispatch(&cli).await.unwrap();
-    assert!(get_setting(&pool, settings_keys::IMAP_PORT).await.unwrap().is_none());
+    assert!(get_setting(&pool, settings_keys::IMAP_PORT)
+        .await
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test]
@@ -231,7 +246,13 @@ async fn dispatch_endpoint_cache_crud() {
 
     let cli = parse_cli(
         dir.path(),
-        &["endpoint-cache", "set", "mx.example.org", "127.0.0.1", "test"],
+        &[
+            "endpoint-cache",
+            "set",
+            "mx.example.org",
+            "127.0.0.1",
+            "test",
+        ],
     );
     dispatch(&cli).await.unwrap();
     let row = get_endpoint_override(&pool, "mx.example.org")
@@ -264,10 +285,7 @@ async fn dispatch_status_shows_registered_users() {
 
 #[test]
 fn cli_language_and_registration_parse() {
-    let cli = parse_cli(
-        std::path::Path::new("/tmp"),
-        &["language", "set", "ru"],
-    );
+    let cli = parse_cli(std::path::Path::new("/tmp"), &["language", "set", "ru"]);
     assert!(matches!(
         cli.command,
         Some(Command::Language {
@@ -304,10 +322,9 @@ fn cli_language_and_registration_parse() {
     );
     assert!(matches!(
         cli.command,
-        Some(Command::RegistrationTokens(RegistrationTokensCommand::Create {
-            max_uses: 5,
-            ..
-        }))
+        Some(Command::RegistrationTokens(
+            RegistrationTokensCommand::Create { max_uses: 5, .. }
+        ))
     ));
 
     let cli = parse_cli(std::path::Path::new("/tmp"), &["sharing", "list"]);
@@ -322,7 +339,10 @@ fn cli_language_and_registration_parse() {
         Some(Command::Status { details: true })
     ));
 
-    let cli = parse_cli(std::path::Path::new("/tmp"), &["port", "https", "set", "8443"]);
+    let cli = parse_cli(
+        std::path::Path::new("/tmp"),
+        &["port", "https", "set", "8443"],
+    );
     assert!(matches!(
         cli.command,
         Some(Command::Port(PortCommand::Https(PortServiceCommand::Set {
@@ -346,9 +366,6 @@ fn cli_language_and_registration_parse() {
     let cli = Cli::try_parse_from(["chatmail", "reload", "--insecure"]).unwrap();
     assert!(matches!(
         cli.command,
-        Some(Command::Reload {
-            insecure: true,
-            ..
-        })
+        Some(Command::Reload { insecure: true, .. })
     ));
 }

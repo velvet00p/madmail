@@ -18,10 +18,10 @@
 pub mod admin;
 pub mod boot;
 pub mod ctl;
+pub mod iroh_boot;
 pub mod logging;
 pub mod servers;
+pub mod ss_boot;
 pub mod supervisor;
 pub mod turn_boot;
-pub mod iroh_boot;
-pub mod ss_boot;
 pub mod upgrade;

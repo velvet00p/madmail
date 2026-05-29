@@ -41,9 +41,10 @@ async fn turn_rfc8656_relay_send_indication_datapath() {
     };
     let external = SocketAddr::new(listen.ip(), listen.port());
 
-    let _srv = spawn_turn_server_with_opts(secret, realm, listen, external, TurnSpawnOpts::for_tests())
-        .await
-        .expect("spawn TURN");
+    let _srv =
+        spawn_turn_server_with_opts(secret, realm, listen, external, TurnSpawnOpts::for_tests())
+            .await
+            .expect("spawn TURN");
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let mut alice = TurnClient::new(listen, secret, realm, now_username(3600))
@@ -56,8 +57,16 @@ async fn turn_rfc8656_relay_send_indication_datapath() {
     let relay_a = alice.allocate().await.expect("alice allocate");
     let relay_b = bob.allocate().await.expect("bob allocate");
     assert_ne!(relay_a.port(), relay_b.port(), "distinct relay ports");
-    assert_ne!(relay_a.port(), listen.port(), "relay port is not TURN control port");
-    assert_ne!(relay_b.port(), listen.port(), "relay port is not TURN control port");
+    assert_ne!(
+        relay_a.port(),
+        listen.port(),
+        "relay port is not TURN control port"
+    );
+    assert_ne!(
+        relay_b.port(),
+        listen.port(),
+        "relay port is not TURN control port"
+    );
 
     alice
         .create_permission(relay_b)
@@ -77,7 +86,11 @@ async fn turn_rfc8656_relay_send_indication_datapath() {
     let (from, _payload) = recv_until(&bob, Duration::from_secs(3), b"hello-via-relay")
         .await
         .expect("data at bob");
-    assert_eq!(from.port(), relay_a.port(), "peer port is sender relay port");
+    assert_eq!(
+        from.port(),
+        relay_a.port(),
+        "peer port is sender relay port"
+    );
 
     bob.send(relay_a, b"pong-via-relay")
         .await
@@ -107,10 +120,15 @@ async fn recv_until(
     let deadline = tokio::time::Instant::now() + timeout;
     while tokio::time::Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        let (from, payload) = client.recv_data(remaining.min(Duration::from_millis(500))).await?;
+        let (from, payload) = client
+            .recv_data(remaining.min(Duration::from_millis(500)))
+            .await?;
         if payload == want {
             return Ok((from, payload));
         }
     }
-    Err(format!("timeout waiting for {:?}", std::str::from_utf8(want).unwrap_or("<bin>")))
+    Err(format!(
+        "timeout waiting for {:?}",
+        std::str::from_utf8(want).unwrap_or("<bin>")
+    ))
 }

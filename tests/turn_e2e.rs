@@ -53,9 +53,11 @@ async fn turn_imap_e2e_getmetadata_deltachat() {
     let line = extract_turn_metadata_value(&r);
     let parsed = parse_turn_metadata(&line).expect("parse metadata line");
     assert_eq!(parsed.port, srv.turn.as_ref().unwrap().discovery.port);
-    let expected_pw =
-        hmac_turn_password("integration-turn-secret", &parsed.expiration_timestamp.to_string())
-            .unwrap();
+    let expected_pw = hmac_turn_password(
+        "integration-turn-secret",
+        &parsed.expiration_timestamp.to_string(),
+    )
+    .unwrap();
     assert_eq!(parsed.password, expected_pw);
 }
 
@@ -88,15 +90,12 @@ async fn turn_metadata_auth() {
 
     // STUN Binding against the same turn-rs instance (smoke-level auth path).
     const BINDING_REQUEST: &[u8] = &[
-        0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xA4, 0x42, 0x45, 0x58, 0x65, 0x61, 0x57, 0x53,
-        0x5A, 0x6E, 0x57, 0x35, 0x76, 0x46,
+        0x00, 0x01, 0x00, 0x00, 0x21, 0x12, 0xA4, 0x42, 0x45, 0x58, 0x65, 0x61, 0x57, 0x53, 0x5A,
+        0x6E, 0x57, 0x35, 0x76, 0x46,
     ];
     let turn_listen = srv.turn.as_ref().unwrap().listen;
     let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-    socket
-        .send_to(BINDING_REQUEST, turn_listen)
-        .await
-        .unwrap();
+    socket.send_to(BINDING_REQUEST, turn_listen).await.unwrap();
     let mut buf = [0u8; 2048];
     let (n, _) = tokio::time::timeout(Duration::from_secs(2), socket.recv_from(&mut buf))
         .await
@@ -187,9 +186,6 @@ async fn turn_imap_e2e_rfc8656_relay_datapath() {
         .send(relay_b, b"imap-cred-relay-ok")
         .await
         .expect("send");
-    let (_, data) = bob
-        .recv_data(Duration::from_secs(3))
-        .await
-        .expect("recv");
+    let (_, data) = bob.recv_data(Duration::from_secs(3)).await.expect("recv");
     assert_eq!(data, b"imap-cred-relay-ok");
 }

@@ -62,11 +62,7 @@ impl DatabaseConfig {
 
     /// Human-readable location for logs / CLI errors.
     pub fn display_location(&self) -> String {
-        if self.is_postgres() {
-            self.dsn.clone()
-        } else {
-            self.dsn.clone()
-        }
+        self.dsn.clone()
     }
 }
 
@@ -104,9 +100,7 @@ fn resolve_credentials_dsn(state_dir: &Path, driver: DbDriver, dsn: &str) -> Str
     if driver.is_postgres() {
         dsn.to_string()
     } else {
-        resolve_state_path(state_dir, dsn)
-            .display()
-            .to_string()
+        resolve_state_path(state_dir, dsn).display().to_string()
     }
 }
 
@@ -128,7 +122,13 @@ mod tests {
         std::fs::write(dir.path().join(MADMAIL_CREDENTIALS_DB), b"x").unwrap();
         let db = effective_database_config(dir.path(), &AppConfig::default());
         assert_eq!(db.driver, DbDriver::Sqlite3);
-        assert_eq!(db.dsn, dir.path().join(MADMAIL_CREDENTIALS_DB).display().to_string());
+        assert_eq!(
+            db.dsn,
+            dir.path()
+                .join(MADMAIL_CREDENTIALS_DB)
+                .display()
+                .to_string()
+        );
     }
 
     #[test]

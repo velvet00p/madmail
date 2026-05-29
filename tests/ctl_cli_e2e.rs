@@ -2,15 +2,15 @@
 
 use std::process::Command;
 
-use assert_cmd::cargo::cargo_bin;
 use chatmail_config::{effective_app_db_path, AppConfig};
 use chatmail_db::{blocklist, init_db, passwords};
+use chatmail_integration::chatmail_bin;
 use predicates::prelude::*;
 use serde_json::Value;
 use tempfile::TempDir;
 
 fn chatmail() -> assert_cmd::Command {
-    Command::new(cargo_bin("chatmail")).into()
+    Command::new(chatmail_bin()).into()
 }
 
 fn state_argv(state_dir: &str) -> Vec<String> {
@@ -32,17 +32,17 @@ fn e2e_ctl_accounts_create_random_delete_and_ban_list() {
     let mut status = chatmail();
     status.args(base.clone());
     status.arg("accounts").arg("status");
-    status.assert().success().stdout(predicate::str::contains("Login accounts:"));
+    status
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Login accounts:"));
 
     let mut create = chatmail();
     create.args(base.clone());
     create.args(["create-user", "--json-only"]);
     let create_out = create.assert().success().get_output().stdout.clone();
-    let creds: Value =
-        serde_json::from_slice(&create_out).expect("create-user JSON stdout");
-    let dclogin = creds["dclogin"]
-        .as_str()
-        .expect("dclogin field");
+    let creds: Value = serde_json::from_slice(&create_out).expect("create-user JSON stdout");
+    let dclogin = creds["dclogin"].as_str().expect("dclogin field");
     let email = dclogin
         .strip_prefix("dclogin:")
         .and_then(|s| s.split_once("/?"))
@@ -80,7 +80,10 @@ fn e2e_ctl_accounts_create_random_delete_and_ban_list() {
     let mut top_ban = chatmail();
     top_ban.args(base);
     top_ban.arg("ban-list");
-    top_ban.assert().success().stdout(predicate::str::contains(&email));
+    top_ban
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&email));
 }
 
 #[test]
@@ -171,13 +174,7 @@ fn e2e_ctl_accounts_export_import() {
 
     chatmail()
         .args(base.clone())
-        .args([
-            "accounts",
-            "create",
-            email,
-            "--password",
-            "export-pass-99",
-        ])
+        .args(["accounts", "create", email, "--password", "export-pass-99"])
         .assert()
         .success();
 
@@ -191,7 +188,9 @@ fn e2e_ctl_accounts_export_import() {
     assert!(export_file.is_file());
     let raw = std::fs::read_to_string(&export_file).unwrap();
     let entries: Vec<Value> = serde_json::from_str(&raw).unwrap();
-    assert!(entries.iter().any(|e| e["username"].as_str() == Some(email)));
+    assert!(entries
+        .iter()
+        .any(|e| e["username"].as_str() == Some(email)));
 
     chatmail()
         .args(base.clone())

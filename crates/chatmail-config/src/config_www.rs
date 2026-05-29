@@ -44,14 +44,12 @@ pub fn update_config_www_dir(config_path: &Path, www_dir: Option<&Path>) -> Resu
 
 fn update_toml_www_dir(config_path: &Path, www_dir: Option<&Path>) -> Result<()> {
     let raw = std::fs::read_to_string(config_path)?;
-    let mut doc: toml::Table = toml::from_str(&raw)
-        .map_err(|e| ChatmailError::config(format!("invalid TOML: {e}")))?;
+    let mut doc: toml::Table =
+        toml::from_str(&raw).map_err(|e| ChatmailError::config(format!("invalid TOML: {e}")))?;
 
     match www_dir {
         Some(p) => {
-            let abs = p
-                .canonicalize()
-                .unwrap_or_else(|_| p.to_path_buf());
+            let abs = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
             doc.insert(
                 "www_dir".into(),
                 toml::Value::String(abs.display().to_string()),
@@ -85,9 +83,7 @@ fn update_maddy_www_dir(config_path: &Path, www_dir: Option<&Path>) -> Result<()
 
         if in_chatmail && trimmed == "}" {
             if let Some(dir) = www_dir {
-                let abs = dir
-                    .canonicalize()
-                    .unwrap_or_else(|_| dir.to_path_buf());
+                let abs = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
                 new_lines.push(format!("    www_dir {}", abs.display()));
             }
             updated = true;

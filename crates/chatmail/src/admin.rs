@@ -23,7 +23,10 @@ pub const ADMIN_TOKEN_FILE: &str = "admin_token";
 const TOKEN_HEX_LEN: usize = 64;
 
 /// Resolve admin token: config `admin_token` directive, else `{state_dir}/admin_token` file.
-pub fn resolve_admin_token(state_dir: &Path, config: &chatmail_config::AppConfig) -> Result<String> {
+pub fn resolve_admin_token(
+    state_dir: &Path,
+    config: &chatmail_config::AppConfig,
+) -> Result<String> {
     if let Some(ref token) = config.admin_token {
         match token.as_str() {
             "disabled" => {

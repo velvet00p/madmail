@@ -36,7 +36,11 @@ impl AuthGate {
         }
     }
 
-    pub fn authenticate(&self, headers: &std::collections::HashMap<String, String>, remote_ip: &str) -> bool {
+    pub fn authenticate(
+        &self,
+        headers: &std::collections::HashMap<String, String>,
+        remote_ip: &str,
+    ) -> bool {
         if self.token.is_empty() {
             return false;
         }
@@ -81,5 +85,8 @@ impl AuthGate {
 }
 
 pub fn extract_ip(remote_addr: &str) -> &str {
-    remote_addr.rsplit_once(':').map(|(ip, _)| ip.trim_matches(['[', ']'])).unwrap_or(remote_addr)
+    remote_addr
+        .rsplit_once(':')
+        .map(|(ip, _)| ip.trim_matches(['[', ']']))
+        .unwrap_or(remote_addr)
 }

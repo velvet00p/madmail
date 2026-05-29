@@ -101,7 +101,10 @@ mod tests {
 
     #[test]
     fn constructor_helpers_build_expected_variants() {
-        assert!(matches!(ChatmailError::config("bad"), ChatmailError::Config(_)));
+        assert!(matches!(
+            ChatmailError::config("bad"),
+            ChatmailError::Config(_)
+        ));
         assert!(matches!(
             ChatmailError::storage("missing"),
             ChatmailError::Storage(_)
@@ -129,8 +132,7 @@ mod tests {
 
     #[test]
     fn io_error_converts_via_from() {
-        let err: ChatmailError =
-            std::io::Error::new(std::io::ErrorKind::NotFound, "gone").into();
+        let err: ChatmailError = std::io::Error::new(std::io::ErrorKind::NotFound, "gone").into();
         assert!(matches!(err, ChatmailError::Io(_)));
         assert!(format!("{err}").contains("gone"));
     }
@@ -139,15 +141,9 @@ mod tests {
     fn policy_errors_have_stable_prefixes() {
         assert!(format!("{}", ChatmailError::AuthFailed).contains("authentication"));
         assert!(format!("{}", ChatmailError::UserBlocked("x".into())).contains("blocked"));
-        assert!(format!(
-            "{}",
-            ChatmailError::EncryptionNeeded("pgp".into())
-        )
-        .contains("encryption"));
-        assert!(format!(
-            "{}",
-            ChatmailError::FederationRejected("evil".into())
-        )
-        .contains("federation"));
+        assert!(format!("{}", ChatmailError::EncryptionNeeded("pgp".into())).contains("encryption"));
+        assert!(
+            format!("{}", ChatmailError::FederationRejected("evil".into())).contains("federation")
+        );
     }
 }

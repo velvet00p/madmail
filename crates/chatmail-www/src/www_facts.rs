@@ -37,20 +37,18 @@ pub fn format_retention_label(config: &AppConfig) -> Option<String> {
 /// Full retention bullet for the info page, localized.
 pub fn retention_info_line(language: &str, label: &str) -> String {
     match language {
-        "fa" => format!(
-            "پیام‌ها پس از {label} به طور خودکار از سرور پاک می‌شوند."
-        ),
+        "fa" => format!("پیام‌ها پس از {label} به طور خودکار از سرور پاک می‌شوند."),
         "ru" => format!("Сообщения автоматически удаляются с сервера через {label}."),
-        "es" => format!(
-            "Los mensajes se eliminan automáticamente del servidor después de {label}."
-        ),
+        "es" => {
+            format!("Los mensajes se eliminan automáticamente del servidor después de {label}.")
+        }
         _ => format!("Messages are automatically deleted from the server after {label}."),
     }
 }
 
 fn humanize_duration(d: Duration) -> String {
     let secs = d.as_secs();
-    if secs >= 86400 && secs % 86400 == 0 {
+    if secs >= 86400 && secs.is_multiple_of(86400) {
         let days = secs / 86400;
         return if days == 1 {
             "1 day".into()
@@ -58,7 +56,7 @@ fn humanize_duration(d: Duration) -> String {
             format!("{days} days")
         };
     }
-    if secs >= 3600 && secs % 3600 == 0 {
+    if secs >= 3600 && secs.is_multiple_of(3600) {
         let hours = secs / 3600;
         return if hours == 1 {
             "1 hour".into()
@@ -66,7 +64,7 @@ fn humanize_duration(d: Duration) -> String {
             format!("{hours} hours")
         };
     }
-    if secs >= 60 && secs % 60 == 0 {
+    if secs >= 60 && secs.is_multiple_of(60) {
         let minutes = secs / 60;
         return if minutes == 1 {
             "1 minute".into()
@@ -82,6 +80,7 @@ fn humanize_duration(d: Duration) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
     use chatmail_config::AppConfig;

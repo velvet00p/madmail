@@ -50,9 +50,7 @@ pub async fn webimap_login(http_addr: std::net::SocketAddr, user: &RegisteredUse
 
 /// Madmail/Delta Chat invite URI (Alice's QR).
 pub fn build_invite_uri(fingerprint: &str, invite_number: &str, auth: &str, email: &str) -> String {
-    format!(
-        "https://i.delta.chat/#{fingerprint}&i={invite_number}&s={auth}&a={email}"
-    )
+    format!("https://i.delta.chat/#{fingerprint}&i={invite_number}&s={auth}&a={email}")
 }
 
 /// Plaintext Secure-Join step (`vc-auth-required`, `vc-contact-confirm`, …).
@@ -225,8 +223,7 @@ pub async fn run_p2p_chat_flow(servers: &MailServers) {
     .await;
 
     // 3b. Alice → Bob: vc-auth-required
-    let vc_auth_required =
-        build_securejoin_step_raw(&alice.email, &bob.email, "vc-auth-required");
+    let vc_auth_required = build_securejoin_step_raw(&alice.email, &bob.email, "vc-auth-required");
     let (st, resp) = webimap_send(
         servers.http_addr,
         &alice.email,
@@ -246,12 +243,7 @@ pub async fn run_p2p_chat_flow(servers: &MailServers) {
     .await;
 
     // 3c. Bob → Alice: vc-request-with-auth (Bob proves QR auth token)
-    let vc_with_auth = build_vc_request_with_auth_raw(
-        &bob.email,
-        &alice.email,
-        auth_token,
-        bob_fp,
-    );
+    let vc_with_auth = build_vc_request_with_auth_raw(&bob.email, &alice.email, auth_token, bob_fp);
     let (st, resp) = webimap_send(
         servers.http_addr,
         &bob.email,
@@ -302,13 +294,8 @@ pub async fn run_p2p_chat_flow(servers: &MailServers) {
     .await;
     assert_eq!(st, 200, "chat send failed: {resp}");
 
-    let alice_body = imap_wait_for_substring(
-        servers.imap_addr,
-        &alice,
-        chat_text,
-        Duration::from_secs(8),
-    )
-    .await;
+    let alice_body =
+        imap_wait_for_substring(servers.imap_addr, &alice, chat_text, Duration::from_secs(8)).await;
     assert!(
         alice_body.contains("Chat-Version: 1.0"),
         "chat mail should be Delta Chat shaped, got:\n{alice_body}"
@@ -412,13 +399,8 @@ pub async fn run_p2p_chat_flow_via_smtp(servers: &MailServers) {
         &build_encrypted_chat_raw(&bob.email, &alice.email, chat_text),
     )
     .await;
-    let alice_body = imap_wait_for_substring(
-        servers.imap_addr,
-        &alice,
-        chat_text,
-        Duration::from_secs(8),
-    )
-    .await;
+    let alice_body =
+        imap_wait_for_substring(servers.imap_addr, &alice, chat_text, Duration::from_secs(8)).await;
     assert!(alice_body.contains("Chat-Version: 1.0"));
 }
 

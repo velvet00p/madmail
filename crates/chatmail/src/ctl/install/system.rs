@@ -17,8 +17,6 @@
 
 //! System install steps (Madmail `install.go`: user, binary, permissions).
 
-#![cfg(unix)]
-
 use std::fs;
 use std::io;
 use std::os::unix::fs::{chown, PermissionsExt};
@@ -56,7 +54,10 @@ pub fn create_service_user(cfg: &InstallConfig, dry_run: bool) -> Result<()> {
         .unwrap_or(false);
 
     if exists {
-        println!("   User {} already exists — fixing home/group", cfg.maddy_user);
+        println!(
+            "   User {} already exists — fixing home/group",
+            cfg.maddy_user
+        );
         return ensure_service_account(cfg, dry_run);
     }
 
@@ -87,7 +88,8 @@ pub fn create_service_user(cfg: &InstallConfig, dry_run: bool) -> Result<()> {
     if !status.success() {
         return Err(ChatmailError::config(format!(
             "useradd failed for {} (status {:?})",
-            cfg.maddy_user, status.code()
+            cfg.maddy_user,
+            status.code()
         )));
     }
     println!("   ✓ User {}", cfg.maddy_user);
@@ -136,7 +138,8 @@ fn ensure_service_account(cfg: &InstallConfig, dry_run: bool) -> Result<()> {
     if !status.success() {
         return Err(ChatmailError::config(format!(
             "usermod failed for {} (home must be absolute, e.g. {})",
-            cfg.maddy_user, cfg.state_dir.display()
+            cfg.maddy_user,
+            cfg.state_dir.display()
         )));
     }
     Ok(())
@@ -181,8 +184,8 @@ pub fn install_binary(cfg: &InstallConfig, dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    let current = std::env::current_exe()
-        .map_err(|e| ChatmailError::config(format!("current_exe: {e}")))?;
+    let current =
+        std::env::current_exe().map_err(|e| ChatmailError::config(format!("current_exe: {e}")))?;
 
     if dry_run {
         println!(

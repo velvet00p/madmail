@@ -46,11 +46,14 @@ pub async fn list_inbox(store: &MailboxStore, user: &str) -> Result<Vec<InboxEnt
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|d| d.as_nanos())
                     .unwrap_or(0);
-                items.push((mtime, InboxEntry {
-                    uid: 0,
-                    msg_id,
-                    size: meta.len(),
-                }));
+                items.push((
+                    mtime,
+                    InboxEntry {
+                        uid: 0,
+                        msg_id,
+                        size: meta.len(),
+                    },
+                ));
             }
         }
     }

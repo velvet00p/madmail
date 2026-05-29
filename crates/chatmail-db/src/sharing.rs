@@ -61,10 +61,7 @@ pub fn validate_slug(slug: &str) -> Result<()> {
     if slug.is_empty() {
         return Err(ChatmailError::config("SLUG is required"));
     }
-    if !slug
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric())
-    {
+    if !slug.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Err(ChatmailError::config(
             "SLUG must be alphanumeric (a-z, A-Z, 0-9)",
         ));
@@ -167,14 +164,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sharing.db");
         let pool = init_sharing_db(&path).await.unwrap();
-        create_sharing_contact(
-            &pool,
-            "alice",
-            "https://i.delta.chat/#fp",
-            "Alice",
-        )
-        .await
-        .unwrap();
+        create_sharing_contact(&pool, "alice", "https://i.delta.chat/#fp", "Alice")
+            .await
+            .unwrap();
         let rows = list_sharing_contacts(&pool).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].slug, "alice");

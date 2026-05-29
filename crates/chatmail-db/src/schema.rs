@@ -138,16 +138,14 @@ pub async fn federation_stats_columns(pool: &DbPool) -> Result<FederationStatsCo
                 cols.iter().any(|(n,)| n == "failed_http_s")
             }
         }
-        DbBackend::Postgres => {
-            db_fetch_optional!(
-                pool,
-                (i32,),
-                "SELECT 1 FROM information_schema.columns \
+        DbBackend::Postgres => db_fetch_optional!(
+            pool,
+            (i32,),
+            "SELECT 1 FROM information_schema.columns \
                  WHERE table_schema = 'public' AND table_name = 'federation_server_stats' \
                  AND column_name = 'failed_http_s' LIMIT 1"
-            )?
-            .is_some()
-        }
+        )?
+        .is_some(),
     };
     if uses_http_s {
         Ok(FederationStatsColumns {

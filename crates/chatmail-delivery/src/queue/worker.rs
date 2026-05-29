@@ -69,13 +69,7 @@ impl OutboundQueue {
     pub async fn enqueue(&self, job: OutboundJob) -> Result<()> {
         let id = uuid::Uuid::new_v4().to_string();
         self.store
-            .write_new(
-                &id,
-                &job.mail_from,
-                &job.rcpt_to,
-                &job.data,
-                now_unix(),
-            )
+            .write_new(&id, &job.mail_from, &job.rcpt_to, &job.data, now_unix())
             .await?;
         let _ = self.work_tx.send(id);
         Ok(())
@@ -99,11 +93,7 @@ impl OutboundQueue {
             return Ok(());
         }
         let now = now_unix();
-        let post_init = self
-            .started_at
-            .elapsed()
-            .unwrap_or_default()
-            < self.config.post_init_delay;
+        let post_init = self.started_at.elapsed().unwrap_or_default() < self.config.post_init_delay;
         let min_start = if post_init {
             now + self.config.post_init_delay.as_secs()
         } else {
@@ -144,14 +134,10 @@ impl OutboundQueue {
     }
 
     async fn body_exists(&self, id: &str) -> bool {
-        tokio::fs::metadata(
-            self.store
-                .location()
-                .join(format!("{id}.body")),
-        )
-        .await
-        .map(|m| m.is_file())
-        .unwrap_or(false)
+        tokio::fs::metadata(self.store.location().join(format!("{id}.body")))
+            .await
+            .map(|m| m.is_file())
+            .unwrap_or(false)
     }
 
     async fn schedule_id(&self, id: &str, run_at_unix: u64) {

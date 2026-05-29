@@ -30,12 +30,14 @@ use crate::metrics::{gather_bytes, init_metrics};
 async fn metrics_handler() -> impl IntoResponse {
     match gather_bytes() {
         Ok(body) => {
-            let text = String::from_utf8(body).unwrap_or_else(|e| {
-                String::from_utf8_lossy(&e.into_bytes()).into_owned()
-            });
+            let text = String::from_utf8(body)
+                .unwrap_or_else(|e| String::from_utf8_lossy(&e.into_bytes()).into_owned());
             (
                 StatusCode::OK,
-                [(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+                [(
+                    header::CONTENT_TYPE,
+                    "text/plain; version=0.0.4; charset=utf-8",
+                )],
                 text,
             )
                 .into_response()

@@ -58,10 +58,7 @@ async fn link_into_inbox(
     canonical: &Path,
 ) -> Result<PathBuf> {
     store.init_mailbox_dir(user, "INBOX").await?;
-    let dest = store
-        .maildir_for_mailbox(user, "INBOX")
-        .new
-        .join(msg_id);
+    let dest = store.maildir_for_mailbox(user, "INBOX").new.join(msg_id);
     if dest.exists() {
         return Err(ChatmailError::storage(format!(
             "message {msg_id} already exists for {user}"
@@ -220,12 +217,7 @@ mod tests {
         for (user, msg_id) in &deliveries {
             let read = read_blob(&store, user, "INBOX", msg_id).await.unwrap();
             assert_eq!(read, body);
-            paths.push(
-                store
-                    .maildir_for_mailbox(user, "INBOX")
-                    .new
-                    .join(msg_id),
-            );
+            paths.push(store.maildir_for_mailbox(user, "INBOX").new.join(msg_id));
         }
 
         #[cfg(unix)]

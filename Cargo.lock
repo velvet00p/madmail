@@ -494,6 +494,7 @@ dependencies = [
 name = "chatmail"
 version = "2.0.0"
 dependencies = [
+ "assert_cmd",
  "axum",
  "base64 0.22.1",
  "chatmail-acme",

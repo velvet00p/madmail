@@ -32,8 +32,12 @@ pub async fn user_exists(pool: &DbPool, username: &str) -> Result<bool> {
 pub async fn get_user_hash(pool: &DbPool, username: &str) -> Result<Option<String>> {
     match detect_schema(pool).await? {
         PasswordsLayout::ChatmailRs => {
-            let row: Option<(String,)> =
-                db_fetch_optional!(pool, (String,), "SELECT hash FROM passwords WHERE username = ?", username)?;
+            let row: Option<(String,)> = db_fetch_optional!(
+                pool,
+                (String,),
+                "SELECT hash FROM passwords WHERE username = ?",
+                username
+            )?;
             Ok(row.map(|(h,)| h))
         }
         PasswordsLayout::MadmailKv => {
@@ -101,8 +105,11 @@ pub async fn list_users(pool: &DbPool) -> Result<Vec<String>> {
             Ok(rows.into_iter().map(|(k,)| k).collect())
         }
         _ => {
-            let rows: Vec<(String,)> =
-                db_fetch_all!(pool, (String,), "SELECT username FROM passwords ORDER BY username")?;
+            let rows: Vec<(String,)> = db_fetch_all!(
+                pool,
+                (String,),
+                "SELECT username FROM passwords ORDER BY username"
+            )?;
             Ok(rows.into_iter().map(|(u,)| u).collect())
         }
     }
@@ -127,9 +134,14 @@ mod tests {
     #[tokio::test]
     async fn test_passwords_crud_chatmail_rs() {
         let pool = init_memory_db().await.unwrap();
-        create_user(&pool, "u@example.org", "bcrypt:hash").await.unwrap();
+        create_user(&pool, "u@example.org", "bcrypt:hash")
+            .await
+            .unwrap();
         assert_eq!(
-            get_user_hash(&pool, "u@example.org").await.unwrap().as_deref(),
+            get_user_hash(&pool, "u@example.org")
+                .await
+                .unwrap()
+                .as_deref(),
             Some("bcrypt:hash")
         );
     }
@@ -140,23 +152,31 @@ mod tests {
         let DbPool::Sqlite(p) = &pool else {
             panic!("memory db is sqlite");
         };
-        sqlx::query("DROP TABLE passwords").execute(p).await.unwrap();
+        sqlx::query("DROP TABLE passwords")
+            .execute(p)
+            .await
+            .unwrap();
         sqlx::query("CREATE TABLE passwords (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             .execute(p)
             .await
             .unwrap();
-        create_user(&pool, "u@example.org", "bcrypt:legacy").await.unwrap();
+        create_user(&pool, "u@example.org", "bcrypt:legacy")
+            .await
+            .unwrap();
         assert_eq!(
-            get_user_hash(&pool, "u@example.org").await.unwrap().as_deref(),
+            get_user_hash(&pool, "u@example.org")
+                .await
+                .unwrap()
+                .as_deref(),
             Some("bcrypt:legacy")
         );
-        sqlx::query(
-            "INSERT INTO passwords (key, value) VALUES ('__REGISTRATION_OPEN__', 'true')",
-        )
-        .execute(p)
-        .await
-        .unwrap();
-        create_user(&pool, "00y4t0i0@[1.1.1.1]", "bcrypt:x").await.unwrap();
+        sqlx::query("INSERT INTO passwords (key, value) VALUES ('__REGISTRATION_OPEN__', 'true')")
+            .execute(p)
+            .await
+            .unwrap();
+        create_user(&pool, "00y4t0i0@[1.1.1.1]", "bcrypt:x")
+            .await
+            .unwrap();
         let users = list_users(&pool).await.unwrap();
         assert_eq!(users.len(), 2);
         assert!(users.contains(&"u@example.org".to_string()));

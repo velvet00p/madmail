@@ -23,8 +23,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use chatmail_config::UninstallArgs;
 use chatmail_config::Args;
+use chatmail_config::UninstallArgs;
 use chatmail_types::{ChatmailError, Result};
 
 use super::context::CtlContext;
@@ -80,14 +80,15 @@ pub async fn uninstall(args: &Args, flags: &UninstallArgs) -> Result<()> {
 
     show_plan(&plan, flags);
 
-    if !flags.force && !flags.dry_run {
-        if !util::confirm(
+    if !flags.force
+        && !flags.dry_run
+        && !util::confirm(
             "Are you sure you want to proceed with uninstallation",
             false,
-        )? {
-            println!("Uninstallation cancelled.");
-            return Ok(());
-        }
+        )?
+    {
+        println!("Uninstallation cancelled.");
+        return Ok(());
     }
 
     let steps: Vec<(&str, StepFn)> = vec![
@@ -101,7 +102,10 @@ pub async fn uninstall(args: &Args, flags: &UninstallArgs) -> Result<()> {
         steps.push(("Removing configuration files", remove_config));
     }
     if !flags.keep_data {
-        steps.push(("Removing state, databases, runtime, logs, and cache", remove_data));
+        steps.push((
+            "Removing state, databases, runtime, logs, and cache",
+            remove_data,
+        ));
     }
     if !flags.keep_binary {
         steps.push(("Removing binaries", remove_binaries));
@@ -212,11 +216,7 @@ fn detect_installation(ctx: &CtlContext, primary: &str) -> Result<UninstallPlan>
         plan.installation_found = true;
     }
 
-    let mut path_prefixes: BTreeSet<String> = plan
-        .service_names
-        .iter()
-        .cloned()
-        .collect();
+    let mut path_prefixes: BTreeSet<String> = plan.service_names.iter().cloned().collect();
     for sd in &plan.state_dirs {
         if let Some(name) = sd.file_name().and_then(|n| n.to_str()) {
             path_prefixes.insert(name.to_string());
@@ -303,7 +303,10 @@ fn discover_family_dirs(parent: &str, stems: &[&str]) -> Vec<PathBuf> {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if stems.iter().any(|s| name == *s || name.starts_with(&format!("{s}-"))) {
+        if stems
+            .iter()
+            .any(|s| name == *s || name.starts_with(&format!("{s}-")))
+        {
             out.push(path);
         }
     }
@@ -323,7 +326,8 @@ fn discover_family_binaries(prefix: &str, out: &mut Vec<PathBuf>) {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if is_family_unit_stem(name) || name.starts_with("madmail") || name.starts_with("chatmail") {
+        if is_family_unit_stem(name) || name.starts_with("madmail") || name.starts_with("chatmail")
+        {
             push_unique_path(out, path);
         }
     }

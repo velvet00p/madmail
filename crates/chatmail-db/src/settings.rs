@@ -64,8 +64,12 @@ async fn fetch_settings_in_keys(
 }
 
 async fn get_setting_madmail_kv(pool: &DbPool, key: &str) -> Result<Option<String>> {
-    let row: Option<(String,)> =
-        db_fetch_optional!(pool, (String,), "SELECT value FROM passwords WHERE key = ?", key)?;
+    let row: Option<(String,)> = db_fetch_optional!(
+        pool,
+        (String,),
+        "SELECT value FROM passwords WHERE key = ?",
+        key
+    )?;
     Ok(row.map(|(value,)| value))
 }
 
@@ -96,8 +100,12 @@ pub async fn get_setting(pool: &DbPool, key: &str) -> Result<Option<String>> {
         }
     }
     if has_settings_table(pool).await? {
-        let row: Option<(String,)> =
-            db_fetch_optional!(pool, (String,), "SELECT value FROM settings WHERE key = ?", key)?;
+        let row: Option<(String,)> = db_fetch_optional!(
+            pool,
+            (String,),
+            "SELECT value FROM settings WHERE key = ?",
+            key
+        )?;
         if row.is_some() {
             return Ok(row.map(|(value,)| value));
         }
@@ -140,10 +148,7 @@ pub async fn set_setting(pool: &DbPool, key: &str, value: &str) -> Result<()> {
     ))
 }
 
-pub async fn get_settings_many(
-    pool: &DbPool,
-    keys: &[&str],
-) -> Result<HashMap<String, String>> {
+pub async fn get_settings_many(pool: &DbPool, keys: &[&str]) -> Result<HashMap<String, String>> {
     let mut out = HashMap::new();
     if keys.is_empty() {
         return Ok(out);
@@ -203,7 +208,12 @@ pub async fn seed_install_defaults(pool: &DbPool) -> Result<()> {
     seed_bool_if_unset(pool, settings_keys::JIT_REGISTRATION_ENABLED, true).await?;
     seed_bool_if_unset(pool, settings_keys::REGISTRATION_OPEN, true).await?;
     seed_string_if_unset(pool, settings_keys::APPENDLIMIT, DEFAULT_MAX_MESSAGE_SIZE).await?;
-    seed_string_if_unset(pool, settings_keys::MAX_MESSAGE_SIZE, DEFAULT_MAX_MESSAGE_SIZE).await?;
+    seed_string_if_unset(
+        pool,
+        settings_keys::MAX_MESSAGE_SIZE,
+        DEFAULT_MAX_MESSAGE_SIZE,
+    )
+    .await?;
     Ok(())
 }
 
@@ -224,7 +234,10 @@ async fn seed_bool_if_unset(pool: &DbPool, key: &str, value: bool) -> Result<()>
 pub async fn get_bool_setting(pool: &DbPool, key: &str, default: bool) -> Result<bool> {
     match get_setting(pool, key).await? {
         None => Ok(default),
-        Some(value) => Ok(matches!(value.to_ascii_lowercase().as_str(), "true" | "1" | "yes")),
+        Some(value) => Ok(matches!(
+            value.to_ascii_lowercase().as_str(),
+            "true" | "1" | "yes"
+        )),
     }
 }
 
@@ -252,12 +265,22 @@ mod tests {
             .unwrap();
         let map = get_settings_many(
             &pool,
-            &[settings_keys::SMTP_PORT, settings_keys::LANGUAGE, settings_keys::IMAP_PORT],
+            &[
+                settings_keys::SMTP_PORT,
+                settings_keys::LANGUAGE,
+                settings_keys::IMAP_PORT,
+            ],
         )
         .await
         .unwrap();
-        assert_eq!(map.get(settings_keys::SMTP_PORT).map(String::as_str), Some("2525"));
-        assert_eq!(map.get(settings_keys::LANGUAGE).map(String::as_str), Some("fa"));
+        assert_eq!(
+            map.get(settings_keys::SMTP_PORT).map(String::as_str),
+            Some("2525")
+        );
+        assert_eq!(
+            map.get(settings_keys::LANGUAGE).map(String::as_str),
+            Some("fa")
+        );
         assert!(!map.contains_key(settings_keys::IMAP_PORT));
     }
 
@@ -265,9 +288,15 @@ mod tests {
     async fn p1_ut04_settings_crud() {
         let pool = init_memory_db().await.unwrap();
         set_setting(&pool, "PORT", "25").await.unwrap();
-        assert_eq!(get_setting(&pool, "PORT").await.unwrap().as_deref(), Some("25"));
+        assert_eq!(
+            get_setting(&pool, "PORT").await.unwrap().as_deref(),
+            Some("25")
+        );
         set_setting(&pool, "PORT", "587").await.unwrap();
-        assert_eq!(get_setting(&pool, "PORT").await.unwrap().as_deref(), Some("587"));
+        assert_eq!(
+            get_setting(&pool, "PORT").await.unwrap().as_deref(),
+            Some("587")
+        );
         delete_setting(&pool, "PORT").await.unwrap();
         assert!(get_setting(&pool, "PORT").await.unwrap().is_none());
     }
@@ -302,9 +331,11 @@ mod tests {
     async fn p1_ut05_bool_setting_defaults() {
         let pool = init_memory_db().await.unwrap();
         assert!(!get_bool_setting(&pool, "MISSING_KEY", false).await.unwrap());
-        assert!(!get_bool_setting(&pool, settings_keys::REGISTRATION_OPEN, false)
-            .await
-            .unwrap());
+        assert!(
+            !get_bool_setting(&pool, settings_keys::REGISTRATION_OPEN, false)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -313,15 +344,19 @@ mod tests {
         set_setting(&pool, settings_keys::REGISTRATION_OPEN, "true")
             .await
             .unwrap();
-        assert!(get_bool_setting(&pool, settings_keys::REGISTRATION_OPEN, false)
-            .await
-            .unwrap());
+        assert!(
+            get_bool_setting(&pool, settings_keys::REGISTRATION_OPEN, false)
+                .await
+                .unwrap()
+        );
         set_setting(&pool, settings_keys::REGISTRATION_OPEN, "false")
             .await
             .unwrap();
-        assert!(!get_bool_setting(&pool, settings_keys::REGISTRATION_OPEN, true)
-            .await
-            .unwrap());
+        assert!(
+            !get_bool_setting(&pool, settings_keys::REGISTRATION_OPEN, true)
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -330,7 +365,10 @@ mod tests {
         let key = "key'\";\nDROP TABLE settings;--";
         let value = "value'\";\n'; DELETE FROM settings;--";
         set_setting(&pool, key, value).await.unwrap();
-        assert_eq!(get_setting(&pool, key).await.unwrap().as_deref(), Some(value));
+        assert_eq!(
+            get_setting(&pool, key).await.unwrap().as_deref(),
+            Some(value)
+        );
 
         let DbPool::Sqlite(p) = &pool else {
             panic!("memory db is sqlite");
@@ -349,25 +387,32 @@ mod tests {
             panic!("memory db is sqlite");
         };
         sqlx::query("DROP TABLE settings").execute(p).await.unwrap();
-        sqlx::query("DROP TABLE passwords").execute(p).await.unwrap();
+        sqlx::query("DROP TABLE passwords")
+            .execute(p)
+            .await
+            .unwrap();
         sqlx::query("CREATE TABLE passwords (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             .execute(p)
             .await
             .unwrap();
-        sqlx::query(
-            "INSERT INTO passwords (key, value) VALUES ('__IMAP_PORT__', '143')",
-        )
-        .execute(p)
-        .await
-        .unwrap();
+        sqlx::query("INSERT INTO passwords (key, value) VALUES ('__IMAP_PORT__', '143')")
+            .execute(p)
+            .await
+            .unwrap();
 
         assert_eq!(
-            get_setting(&pool, "__IMAP_PORT__").await.unwrap().as_deref(),
+            get_setting(&pool, "__IMAP_PORT__")
+                .await
+                .unwrap()
+                .as_deref(),
             Some("143")
         );
         set_setting(&pool, "__IMAP_PORT__", "1143").await.unwrap();
         assert_eq!(
-            get_setting(&pool, "__IMAP_PORT__").await.unwrap().as_deref(),
+            get_setting(&pool, "__IMAP_PORT__")
+                .await
+                .unwrap()
+                .as_deref(),
             Some("1143")
         );
     }

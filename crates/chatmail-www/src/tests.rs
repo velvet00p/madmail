@@ -15,6 +15,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#![allow(clippy::field_reassign_with_default)]
+
 use std::sync::Arc;
 
 use chatmail_config::{parse_maddy_config, AppConfig, RuntimeListeners};
@@ -123,11 +125,10 @@ async fn www_info_page_uses_config_and_db() {
         .await
         .unwrap();
     assert_eq!(ctx.DefaultQuota, 1024 * 1024 * 1024);
-    assert!(
-        ctx.MessageRetentionLine
-            .as_deref()
-            .is_some_and(|s| s.contains("7 days"))
-    );
+    assert!(ctx
+        .MessageRetentionLine
+        .as_deref()
+        .is_some_and(|s| s.contains("7 days")));
     let engine = TemplateEngine::new();
     let html = engine.render("info.html", &ctx).unwrap();
     assert!(html.contains("1.0 GB") || html.contains("1024"));
@@ -204,12 +205,22 @@ async fn external_www_live_reload() {
     let ctx = build_context(&pool, &cfg, None, None, None, dir.path(), &cache)
         .await
         .unwrap();
-    assert!(engine.render("index.html", &ctx).unwrap().contains("live.test"));
+    assert!(engine
+        .render("index.html", &ctx)
+        .unwrap()
+        .contains("live.test"));
 
-    std::fs::write(&index, "<!DOCTYPE html><html><body>updated-html</body></html>").unwrap();
+    std::fs::write(
+        &index,
+        "<!DOCTYPE html><html><body>updated-html</body></html>",
+    )
+    .unwrap();
     std::fs::write(dir.path().join("marker.css"), "body { color: blue; }").unwrap();
 
-    assert!(engine.render("index.html", &ctx).unwrap().contains("updated-html"));
+    assert!(engine
+        .render("index.html", &ctx)
+        .unwrap()
+        .contains("updated-html"));
 
     let st = crate::WwwState::new(pool, Arc::new(AppState::new(dir.path())), cfg);
     let css = st.load_asset("marker.css").unwrap();
@@ -313,13 +324,11 @@ async fn webimap_send_oversize_returns_message_file_too_big() {
         .await
         .unwrap();
     let hash = hash_password("secret").unwrap();
-    passwords::create_user(&pool, "u@x.org", &hash).await.unwrap();
+    passwords::create_user(&pool, "u@x.org", &hash)
+        .await
+        .unwrap();
 
-    let app = crate::www_router(crate::WwwState::new(
-        pool,
-        app_state,
-        cfg,
-    ));
+    let app = crate::www_router(crate::WwwState::new(pool, app_state, cfg));
 
     let body = "x".repeat((max + 1) as usize);
     let payload = serde_json::json!({
@@ -352,8 +361,8 @@ async fn webimap_send_oversize_returns_message_file_too_big() {
 
 #[test]
 fn web_delivery_error_maps_message_too_large_to_413() {
-    use chatmail_types::{ChatmailError, MESSAGE_FILE_TOO_BIG};
     use crate::handlers::web_delivery_error;
+    use chatmail_types::{ChatmailError, MESSAGE_FILE_TOO_BIG};
 
     let (status, msg) = web_delivery_error(&ChatmailError::MessageTooLarge);
     assert_eq!(status, axum::http::StatusCode::PAYLOAD_TOO_LARGE);

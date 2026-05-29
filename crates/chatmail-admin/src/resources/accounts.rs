@@ -19,8 +19,8 @@
 
 use chatmail_auth::{hash_password, is_importable_hash, normalize_username};
 use chatmail_db::{
-    account_info, blocklist, passwords, registration_tokens, AccountQuotaInfo,
-    ADMIN_DELETE_REASON, BULK_DELETE_REASON,
+    account_info, blocklist, passwords, registration_tokens, AccountQuotaInfo, ADMIN_DELETE_REASON,
+    BULK_DELETE_REASON,
 };
 use getrandom::getrandom;
 use serde::Deserialize;
@@ -66,8 +66,7 @@ fn random_alnum(len: usize) -> Result<String, (u16, String)> {
     const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let mut b = vec![0u8; len];
     getrandom(&mut b).map_err(|e| (500, format!("failed to generate random string: {e}")))?;
-    Ok(b
-        .iter()
+    Ok(b.iter()
         .map(|x| CHARSET[(*x as usize) % CHARSET.len()] as char)
         .collect())
 }
@@ -77,8 +76,7 @@ fn random_password(len: usize) -> Result<String, (u16, String)> {
         b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
     let mut b = vec![0u8; len];
     getrandom(&mut b).map_err(|e| (500, format!("failed to generate password: {e}")))?;
-    Ok(b
-        .iter()
+    Ok(b.iter()
         .map(|x| CHARSET[(*x as usize) % CHARSET.len()] as char)
         .collect())
 }
@@ -174,34 +172,34 @@ pub async fn accounts(st: &AdminState, method: &str, body: &Value) -> AdminResul
                 let password = random_password(ADMIN_PASSWORD_LEN)?;
                 let email = format!("{localpart}@{}", st.mail_domain);
 
-                if blocklist::is_blocked(&st.pool, &email).await.map_err(db_err)? {
+                if blocklist::is_blocked(&st.pool, &email)
+                    .await
+                    .map_err(db_err)?
+                {
                     continue;
                 }
 
-                if passwords::user_exists(&st.pool, &email).await.map_err(db_err)? {
+                if passwords::user_exists(&st.pool, &email)
+                    .await
+                    .map_err(db_err)?
+                {
                     continue;
                 }
 
                 let hash = hash_password(&password).map_err(db_err)?;
                 match provision_account(st, &email, &hash).await {
                     Ok(()) => {
-                        return Ok((
-                            201,
-                            Some(json!({ "email": email, "password": password })),
-                        ));
+                        return Ok((201, Some(json!({ "email": email, "password": password }))));
                     }
                     Err((500, _)) => continue,
                     Err(e) => return Err(e),
                 }
             }
-            Err((
-                500,
-                "failed to create account after max retries".into(),
-            ))
+            Err((500, "failed to create account after max retries".into()))
         }
         "DELETE" => {
-            let req: UsernameBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: UsernameBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if req.username.is_empty() {
                 return Err((400, "username is required".into()));
             }
@@ -217,8 +215,8 @@ pub async fn accounts(st: &AdminState, method: &str, body: &Value) -> AdminResul
             ))
         }
         "PATCH" => {
-            let req: BulkBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: BulkBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             match req.action.as_str() {
                 "export" => export_accounts(st).await,
                 "import" => import_accounts(st, req.users).await,
@@ -232,7 +230,10 @@ pub async fn accounts(st: &AdminState, method: &str, body: &Value) -> AdminResul
                 )),
             }
         }
-        _ => Err((405, format!("method {method} not allowed for /admin/accounts"))),
+        _ => Err((
+            405,
+            format!("method {method} not allowed for /admin/accounts"),
+        )),
     }
 }
 
@@ -243,7 +244,9 @@ async fn export_accounts(st: &AdminState) -> AdminResult {
         if is_internal_settings_key(&u) {
             continue;
         }
-        let hash = passwords::get_user_hash(&st.pool, &u).await.map_err(db_err)?;
+        let hash = passwords::get_user_hash(&st.pool, &u)
+            .await
+            .map_err(db_err)?;
         entries.push(json!({
             "username": u,
             "hash": hash.unwrap_or_default(),
@@ -281,12 +284,18 @@ async fn import_accounts(st: &AdminState, users: Vec<ImportUser>) -> AdminResult
             }
         };
 
-        if passwords::user_exists(&st.pool, &username).await.map_err(db_err)? {
+        if passwords::user_exists(&st.pool, &username)
+            .await
+            .map_err(db_err)?
+        {
             skipped += 1;
             continue;
         }
 
-        if blocklist::is_blocked(&st.pool, &username).await.map_err(db_err)? {
+        if blocklist::is_blocked(&st.pool, &username)
+            .await
+            .map_err(db_err)?
+        {
             skipped += 1;
             errors.push(format!("{username}: username is blocklisted"));
             continue;

@@ -107,7 +107,10 @@ mod tests {
     fn parse_size_from_mail_from() {
         let s = parse_smtp_size_parameter("MAIL FROM:<a@test> SIZE=4096").unwrap();
         assert_eq!(s, Some(4096));
-        assert_eq!(parse_smtp_size_parameter("MAIL FROM:<a@test>").unwrap(), None);
+        assert_eq!(
+            parse_smtp_size_parameter("MAIL FROM:<a@test>").unwrap(),
+            None
+        );
     }
 
     #[test]

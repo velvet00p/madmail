@@ -67,6 +67,12 @@ struct Cached {
     snap: Snapshot,
 }
 
+impl Default for WwwContextCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WwwContextCache {
     pub fn new() -> Self {
         Self {

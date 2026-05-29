@@ -19,16 +19,17 @@ use std::sync::Arc;
 
 use chatmail_auth::{normalize_username, AuthContext};
 use chatmail_config::CredentialPolicy;
+use chatmail_db::DbPool;
 use chatmail_iroh::IrohDiscovery;
-use chatmail_turn::TurnDiscovery;
 use chatmail_pgp::{enforce_encryption, EnforceOptions};
 use chatmail_state::AppState;
-use chatmail_storage::{mailbox_exists, read_blob, write_blob_mailbox, list_mailbox_messages, store_add_flags, move_message, copy_message, expunge_deleted, StoredMessage};
-use chatmail_types::{ChatmailError, Result};
-use chatmail_db::DbPool;
-use tokio::io::{
-    AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
+use chatmail_storage::{
+    copy_message, expunge_deleted, list_mailbox_messages, mailbox_exists, move_message, read_blob,
+    store_add_flags, write_blob_mailbox, StoredMessage,
 };
+use chatmail_turn::TurnDiscovery;
+use chatmail_types::{ChatmailError, Result};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::broadcast::error::RecvError;
 use tracing::debug;
 
@@ -106,7 +107,9 @@ impl ImapSession {
                 continue;
             }
             let (tag, cmd, args) = parse_command(&line);
-            let resp = self.dispatch(&mut lines, tag, &cmd, &args, &mut writer).await?;
+            let resp = self
+                .dispatch(&mut lines, tag, &cmd, &args, &mut writer)
+                .await?;
             if let Some(r) = resp {
                 writer.write_all(r.as_bytes()).await?;
             }
@@ -308,13 +311,16 @@ impl ImapSession {
             .ok_or(ChatmailError::AuthFailed)
     }
 
-    async fn handle_fetch(&mut self, tag: &str, args: &str, user: &str, by_uid: bool) -> Result<String> {
+    async fn handle_fetch(
+        &mut self,
+        tag: &str,
+        args: &str,
+        user: &str,
+        by_uid: bool,
+    ) -> Result<String> {
         let mode = fetch_response_mode(args);
         // Reload INBOX so FETCH after SMTP delivery sees new messages on this connection.
-        let mailbox = self
-            .selected_mailbox
-            .as_deref()
-            .unwrap_or("INBOX");
+        let mailbox = self.selected_mailbox.as_deref().unwrap_or("INBOX");
         self.messages = list_messages(&self.ctx, user, mailbox).await?;
 
         let selected: Vec<_> = select_fetch_messages(&self.messages, args, by_uid);
@@ -386,7 +392,8 @@ impl ImapSession {
             return Ok(format!("{tag} OK STORE completed\r\n"));
         }
 
-        let add_seen = mode == StoreMode::Add && flags.iter().any(|f| f.eq_ignore_ascii_case("\\Seen"));
+        let add_seen =
+            mode == StoreMode::Add && flags.iter().any(|f| f.eq_ignore_ascii_case("\\Seen"));
         let add_deleted =
             mode == StoreMode::Add && flags.iter().any(|f| f.eq_ignore_ascii_case("\\Deleted"));
         if add_deleted {
@@ -420,7 +427,10 @@ impl ImapSession {
         }
 
         self.messages = list_messages(&self.ctx, user, mailbox).await?;
-        out.push_str(&format!("{tag} OK {} completed\r\n", if by_uid { "UID STORE" } else { "STORE" }));
+        out.push_str(&format!(
+            "{tag} OK {} completed\r\n",
+            if by_uid { "UID STORE" } else { "STORE" }
+        ));
         Ok(out)
     }
 
@@ -430,11 +440,7 @@ impl ImapSession {
             .as_deref()
             .ok_or_else(|| ChatmailError::protocol("No mailbox selected"))?;
         let (uid_set, dest) = parse_uid_set_and_mailbox(args)?;
-        let uids: Vec<u32> = if uid_set.is_empty() {
-            vec![]
-        } else {
-            uid_set
-        };
+        let uids: Vec<u32> = if uid_set.is_empty() { vec![] } else { uid_set };
         let msgs: Vec<_> = uids
             .iter()
             .filter_map(|uid| self.messages.iter().find(|m| m.uid == *uid))
@@ -443,10 +449,7 @@ impl ImapSession {
             return Ok(format!("{tag} NO [TRYCREATE] No such messages\r\n"));
         }
         if !mailbox_exists(&self.ctx.mailbox_store, user, &dest).await {
-            self.ctx
-                .mailbox_store
-                .init_mailbox_dir(user, &dest)
-                .await?;
+            self.ctx.mailbox_store.init_mailbox_dir(user, &dest).await?;
         }
         for m in &msgs {
             move_message(&self.ctx.mailbox_store, user, from, &dest, &m.id).await?;
@@ -469,10 +472,7 @@ impl ImapSession {
             return Ok(format!("{tag} NO [TRYCREATE] No such messages\r\n"));
         }
         if !mailbox_exists(&self.ctx.mailbox_store, user, &dest).await {
-            self.ctx
-                .mailbox_store
-                .init_mailbox_dir(user, &dest)
-                .await?;
+            self.ctx.mailbox_store.init_mailbox_dir(user, &dest).await?;
         }
         for m in &msgs {
             copy_message(&self.ctx.mailbox_store, user, from, &dest, &m.id).await?;
@@ -554,10 +554,7 @@ impl ImapSession {
         W: AsyncWriteExt + Unpin,
     {
         let prev_exists = self.messages.len();
-        let mailbox = self
-            .selected_mailbox
-            .as_deref()
-            .unwrap_or("INBOX");
+        let mailbox = self.selected_mailbox.as_deref().unwrap_or("INBOX");
         self.messages = list_messages(&self.ctx, user, mailbox).await?;
         let new_exists = self.messages.len();
         if new_exists <= prev_exists {
@@ -637,14 +634,7 @@ impl ImapSession {
         self.ctx.quota.check_quota(user, literal.len() as u64)?;
         let msg_id = uuid::Uuid::new_v4().to_string();
         let mailbox = self.selected_mailbox.as_deref().unwrap_or("INBOX");
-        write_blob_mailbox(
-            &self.ctx.mailbox_store,
-            user,
-            mailbox,
-            &msg_id,
-            &literal,
-        )
-        .await?;
+        write_blob_mailbox(&self.ctx.mailbox_store, user, mailbox, &msg_id, &literal).await?;
         self.ctx.quota.record_write(user, literal.len() as u64);
         self.ctx.events.notify_new_message(user, &msg_id);
         self.messages = list_messages(&self.ctx, user, mailbox).await?;
@@ -658,9 +648,7 @@ impl ImapSession {
         let mut out = String::new();
         for name in ["INBOX", "DeltaChat"] {
             if mailbox_exists(&self.ctx.mailbox_store, &user, name).await {
-                out.push_str(&format!(
-                    "* LIST (\\HasNoChildren) \"/\" \"{name}\"\r\n"
-                ));
+                out.push_str(&format!("* LIST (\\HasNoChildren) \"/\" \"{name}\"\r\n"));
             }
         }
         out.push_str(&format!("{tag} OK LIST completed\r\n"));
@@ -688,11 +676,7 @@ impl ImapSession {
     }
 }
 
-async fn list_messages(
-    ctx: &AppState,
-    user: &str,
-    mailbox: &str,
-) -> Result<Vec<MailMessage>> {
+async fn list_messages(ctx: &AppState, user: &str, mailbox: &str) -> Result<Vec<MailMessage>> {
     Ok(list_mailbox_messages(&ctx.mailbox_store, user, mailbox)
         .await?
         .into_iter()
@@ -723,7 +707,7 @@ fn format_fetch_flags(flags: &chatmail_storage::MaildirFlags) -> String {
         format!(
             " FLAGS ({})",
             imap.iter()
-                .map(|f| format!("{f}"))
+                .map(|f| f.to_string())
                 .collect::<Vec<_>>()
                 .join(" ")
         )
@@ -745,8 +729,7 @@ fn parse_store_args(args: &str) -> Result<(Vec<u32>, StoreMode, Vec<String>)> {
         .or_else(|| args.split_once("FLAGS"))
         .ok_or_else(|| ChatmailError::protocol("invalid STORE args"))?;
     let uid_part = uid_part.trim();
-    let uids = parse_num_set(&format!("{uid_part} ()"))
-        .unwrap_or_default();
+    let uids = parse_num_set(&format!("{uid_part} ()")).unwrap_or_default();
 
     let mode = if rest.starts_with("FLAGS") || args.contains("-FLAGS") {
         if args.contains("+FLAGS") {
@@ -994,10 +977,7 @@ fn select_fetch_messages<'a>(
         return messages.iter().collect();
     };
     if by_uid {
-        messages
-            .iter()
-            .filter(|m| nums.iter().any(|u| *u == m.uid))
-            .collect()
+        messages.iter().filter(|m| nums.contains(&m.uid)).collect()
     } else {
         nums.iter()
             .filter_map(|seq| messages.get(seq.saturating_sub(1) as usize))
@@ -1059,7 +1039,10 @@ fn fetch_response_mode(args: &str) -> FetchResponseMode {
     if args.contains("BODY.PEEK[]") || args.contains("BODY[]") {
         return FetchResponseMode::FullBody;
     }
-    if args.contains("HEADER.FIELDS") || args.contains("BODY.PEEK[HEADER") || args.contains("BODY[HEADER") {
+    if args.contains("HEADER.FIELDS")
+        || args.contains("BODY.PEEK[HEADER")
+        || args.contains("BODY[HEADER")
+    {
         return FetchResponseMode::Headers;
     }
     if args.split_whitespace().any(|w| w == "RFC822") {
@@ -1123,7 +1106,12 @@ fn filter_header_fields(body: &[u8], names: Vec<String>) -> Vec<u8> {
             }
             continue;
         }
-        let field = line.split(':').next().unwrap_or("").trim().to_ascii_uppercase();
+        let field = line
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_uppercase();
         keep = names.iter().any(|n| n == &field);
         if keep {
             out.extend_from_slice(line.as_bytes());
@@ -1198,11 +1186,12 @@ fn parse_login_args(args: &str) -> Result<(String, String)> {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
+    use chatmail_storage::{write_blob, MailboxStore};
     use std::sync::Arc;
     use std::time::Duration;
-    use chatmail_storage::{write_blob, MailboxStore};
     // write_blob delivers to INBOX
 
     /// P5-UT01: CAPABILITY includes Chatmail extensions (TDD + cmdeploy `test_capabilities`).
@@ -1275,7 +1264,8 @@ mod tests {
                       Message-ID: <a@b>\r\n\r\n)\r\n";
         assert!(imap_proto::parser::parse_response(peek).is_err());
 
-        let wire = b"* 1 FETCH (UID 1 RFC822.SIZE 99 BODY[HEADER.FIELDS (MESSAGE-ID FROM)] {34}\r\n\
+        let wire =
+            b"* 1 FETCH (UID 1 RFC822.SIZE 99 BODY[HEADER.FIELDS (MESSAGE-ID FROM)] {34}\r\n\
                       Message-ID: <a@b>\r\nFrom: <a@b>\r\n\r\n)\r\n";
         match imap_proto::parser::parse_response(wire) {
             Ok((_, imap_proto::Response::Fetch(_, _))) => {}
@@ -1322,7 +1312,7 @@ mod tests {
 
     #[tokio::test]
     async fn p5_store_seen_moves_to_cur() {
-        use chatmail_storage::{write_blob, store_add_flags, list_mailbox_messages};
+        use chatmail_storage::{list_mailbox_messages, store_add_flags, write_blob};
 
         let tmp = tempfile::tempdir().unwrap();
         let store = MailboxStore::new(tmp.path());
@@ -1341,7 +1331,7 @@ mod tests {
 
     #[tokio::test]
     async fn p5_move_between_mailboxes() {
-        use chatmail_storage::{write_blob, move_message, list_mailbox_messages};
+        use chatmail_storage::{list_mailbox_messages, move_message, write_blob};
 
         let tmp = tempfile::tempdir().unwrap();
         let store = MailboxStore::new(tmp.path());
@@ -1564,7 +1554,10 @@ mod tests {
             .emit_idle_updates(&mut no_dup, "u@example.org")
             .await
             .unwrap();
-        assert!(no_dup.is_empty(), "no duplicate EXISTS when count unchanged");
+        assert!(
+            no_dup.is_empty(),
+            "no duplicate EXISTS when count unchanged"
+        );
     }
 
     /// P6-UT01: IDLE path uses EventBus (TDD `03-imap-server.md` — EXISTS on delivery).
@@ -1588,21 +1581,18 @@ mod tests {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod integration_tests {
     use super::*;
     use chatmail_auth::hash_password;
     use chatmail_storage::write_blob;
-    use std::sync::Arc;
     use std::net::TcpListener as StdListener;
+    use std::sync::Arc;
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpStream;
 
-    async fn imap_dialog(
-        pool: DbPool,
-        ctx: Arc<AppState>,
-        script: &[&str],
-    ) -> String {
+    async fn imap_dialog(pool: DbPool, ctx: Arc<AppState>, script: &[&str]) -> String {
         imap_dialog_with_discovery(pool, ctx, None, None, script).await
     }
 

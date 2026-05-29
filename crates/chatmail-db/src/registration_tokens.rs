@@ -109,11 +109,7 @@ pub async fn ensure_new_account_quota(pool: &DbPool, username: &str) -> Result<(
     Ok(())
 }
 
-pub async fn attach_registration_token(
-    pool: &DbPool,
-    username: &str,
-    token: &str,
-) -> Result<()> {
+pub async fn attach_registration_token(pool: &DbPool, username: &str, token: &str) -> Result<()> {
     ensure_new_account_quota(pool, username).await?;
     let qt = crate::schema::quota_table(pool).await?;
     let sql = format!("UPDATE {qt} SET used_token = ? WHERE username = ?");
@@ -121,11 +117,7 @@ pub async fn attach_registration_token(
     Ok(())
 }
 
-pub async fn reserve_registration_token(
-    pool: &DbPool,
-    username: &str,
-    token: &str,
-) -> Result<()> {
+pub async fn reserve_registration_token(pool: &DbPool, username: &str, token: &str) -> Result<()> {
     attach_registration_token(pool, username, token).await
 }
 
@@ -174,26 +166,22 @@ pub async fn record_first_login(pool: &DbPool, username: &str) -> Result<FirstLo
 
 async fn consume_registration_token(pool: &DbPool, token: &str) -> Result<bool> {
     let affected = match pool {
-        DbPool::Sqlite(p) => {
-            sqlx::query(
-                "UPDATE registration_tokens SET used_count = used_count + 1
+        DbPool::Sqlite(p) => sqlx::query(
+            "UPDATE registration_tokens SET used_count = used_count + 1
                  WHERE token = ? AND used_count < max_uses",
-            )
-            .bind(token.trim())
-            .execute(p)
-            .await?
-            .rows_affected()
-        }
-        DbPool::Postgres(p) => {
-            sqlx::query(&pg_sql(
-                "UPDATE registration_tokens SET used_count = used_count + 1
+        )
+        .bind(token.trim())
+        .execute(p)
+        .await?
+        .rows_affected(),
+        DbPool::Postgres(p) => sqlx::query(&pg_sql(
+            "UPDATE registration_tokens SET used_count = used_count + 1
                  WHERE token = ? AND used_count < max_uses",
-            ))
-            .bind(token.trim())
-            .execute(p)
-            .await?
-            .rows_affected()
-        }
+        ))
+        .bind(token.trim())
+        .execute(p)
+        .await?
+        .rows_affected(),
     };
     Ok(affected > 0)
 }
@@ -219,8 +207,12 @@ mod tests {
         let pool = init_memory_db().await.unwrap();
         seed_token(&pool, "invite-abc", 2).await;
 
-        validate_registration_token(&pool, "invite-abc").await.unwrap();
-        ensure_new_account_quota(&pool, "alice@x.org").await.unwrap();
+        validate_registration_token(&pool, "invite-abc")
+            .await
+            .unwrap();
+        ensure_new_account_quota(&pool, "alice@x.org")
+            .await
+            .unwrap();
         attach_registration_token(&pool, "alice@x.org", "invite-abc")
             .await
             .unwrap();

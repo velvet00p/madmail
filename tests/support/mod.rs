@@ -16,17 +16,17 @@ use std::net::TcpListener as StdListener;
 use std::sync::Arc;
 use std::time::Duration;
 
-use base64::Engine;
 use axum::Router;
+use base64::Engine;
 use chatmail_auth::hash_password;
 use chatmail_config::AppConfig;
 use chatmail_db::DbPool;
 use chatmail_delivery::{start_outbound_queue, DeliveryContext};
 use chatmail_imap::{ImapSession, ImapSessionConfig};
-use chatmail_turn::{spawn_turn_server_with_opts, TurnDiscovery, TurnServerHandle, TurnSpawnOpts};
 use chatmail_smtp::{SmtpSession, SmtpSessionConfig};
 use chatmail_state::AppState;
 use chatmail_storage::write_blob;
+use chatmail_turn::{spawn_turn_server_with_opts, TurnDiscovery, TurnServerHandle, TurnSpawnOpts};
 use chatmail_www::{www_router, WwwState};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -82,10 +82,7 @@ pub async fn spawn_mail_servers(dir: &std::path::Path) -> MailServers {
     spawn_mail_servers_opts(dir, MailServersOpts::default()).await
 }
 
-pub async fn spawn_mail_servers_opts(
-    dir: &std::path::Path,
-    opts: MailServersOpts,
-) -> MailServers {
+pub async fn spawn_mail_servers_opts(dir: &std::path::Path, opts: MailServersOpts) -> MailServers {
     let pool = chatmail_db::init_memory_db().await.expect("db");
     chatmail_db::set_setting(&pool, chatmail_db::settings_keys::WEBIMAP_ENABLED, "true")
         .await
@@ -95,9 +92,11 @@ pub async fn spawn_mail_servers_opts(
         .expect("websmtp");
     let ctx = Arc::new(AppState::new(dir));
 
-    let mut app_config = AppConfig::default();
-    app_config.hostname = Some("test".into());
-    app_config.primary_domain = Some("test".into());
+    let app_config = AppConfig {
+        hostname: Some("test".into()),
+        primary_domain: Some("test".into()),
+        ..Default::default()
+    };
     let hostname = "test".to_string();
     let local_domains = app_config.effective_local_domains(&hostname);
     let delivery = DeliveryContext {
@@ -305,7 +304,7 @@ pub async fn smtp_submit(
     let mut transcript = String::new();
 
     transcript.push_str(&read_smtp(&mut stream, &mut buf).await);
-    send_smtp(&mut stream, &format!("EHLO relay-ping.test")).await;
+    send_smtp(&mut stream, "EHLO relay-ping.test").await;
     transcript.push_str(&read_smtp(&mut stream, &mut buf).await);
 
     let cred = format!("\0{username}\0{password}");
@@ -392,18 +391,12 @@ fn extract_literal_at(transcript: &str, idx: usize) -> Option<String> {
 }
 
 async fn send_smtp(stream: &mut TcpStream, line: &str) {
-    stream
-        .write_all(line.as_bytes())
-        .await
-        .expect("smtp write");
+    stream.write_all(line.as_bytes()).await.expect("smtp write");
     stream.write_all(b"\r\n").await.expect("smtp crlf");
 }
 
 async fn send_imap(stream: &mut TcpStream, line: &str) {
-    stream
-        .write_all(line.as_bytes())
-        .await
-        .expect("imap write");
+    stream.write_all(line.as_bytes()).await.expect("imap write");
     stream.write_all(b"\r\n").await.expect("imap crlf");
 }
 

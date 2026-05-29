@@ -89,9 +89,7 @@ pub async fn deliver_remote(ctx: &DeliveryContext, job: &OutboundJob) -> Deliver
                 Err(e) => {
                     if e.permanent {
                         record_failure(ctx, &domain, scheme_label(url));
-                        return DeliveryOutcome::Permanent {
-                            reason: e.reason,
-                        };
+                        return DeliveryOutcome::Permanent { reason: e.reason };
                     }
                     e.reason
                 }
@@ -107,9 +105,7 @@ pub async fn deliver_remote(ctx: &DeliveryContext, job: &OutboundJob) -> Deliver
                 Err(e) => {
                     if e.permanent {
                         record_failure(ctx, &domain, "HTTPS");
-                        return DeliveryOutcome::Permanent {
-                            reason: e.reason,
-                        };
+                        return DeliveryOutcome::Permanent { reason: e.reason };
                     }
                     e.reason
                 }
@@ -119,7 +115,9 @@ pub async fn deliver_remote(ctx: &DeliveryContext, job: &OutboundJob) -> Deliver
 
     let smtp_host = match &target {
         FederationTarget::Host(h) => h.clone(),
-        FederationTarget::MxdelivUrl(url) => host_from_mxdeliv_url(url).unwrap_or_else(|| domain.clone()),
+        FederationTarget::MxdelivUrl(url) => {
+            host_from_mxdeliv_url(url).unwrap_or_else(|| domain.clone())
+        }
     };
     match try_smtp_delivery(&smtp_host, job).await {
         Ok(()) => {
@@ -154,8 +152,8 @@ async fn try_mxdeliv_host(
 ) -> Result<&'static str, PostError> {
     let https_url = format!("https://{host}/mxdeliv");
     match post_mxdeliv(client, &https_url, job).await {
-        Ok(()) => return Ok("HTTPS"),
-        Err(e) if e.permanent => return Err(e),
+        Ok(()) => Ok("HTTPS"),
+        Err(e) if e.permanent => Err(e),
         Err(e) => {
             debug!(%https_url, error = %e.reason, "federation: HTTPS failed, trying HTTP");
             let http_url = format!("http://{host}/mxdeliv");
@@ -211,12 +209,20 @@ async fn post_mxdeliv(client: &Client, url: &str, job: &OutboundJob) -> Result<(
     }
     if res.status().is_client_error() {
         return Err(PostError {
-            reason: format!("{} {}", res.status(), res.status().canonical_reason().unwrap_or("")),
+            reason: format!(
+                "{} {}",
+                res.status(),
+                res.status().canonical_reason().unwrap_or("")
+            ),
             permanent: true,
         });
     }
     Err(PostError {
-        reason: format!("{} {}", res.status(), res.status().canonical_reason().unwrap_or("")),
+        reason: format!(
+            "{} {}",
+            res.status(),
+            res.status().canonical_reason().unwrap_or("")
+        ),
         permanent: false,
     })
 }
@@ -261,7 +267,10 @@ fn normalize_rewrite_url(raw: &str) -> String {
 fn host_from_mxdeliv_url(url: &str) -> Option<String> {
     let rest = url.split("://").nth(1)?;
     let host_port = rest.split('/').next()?;
-    let host = host_port.rsplit_once(':').map(|(h, _)| h).unwrap_or(host_port);
+    let host = host_port
+        .rsplit_once(':')
+        .map(|(h, _)| h)
+        .unwrap_or(host_port);
     Some(mxdeliv_host_for_url(host))
 }
 
@@ -339,11 +348,7 @@ async fn try_smtp_delivery(host: &str, job: &OutboundJob) -> Result<(), String> 
     .await?;
     read_smtp_reply(&mut reader, &mut line, 250).await?;
 
-    smtp_write(
-        &mut write_half,
-        format!("RCPT TO:<{}>\r\n", job.rcpt_to),
-    )
-    .await?;
+    smtp_write(&mut write_half, format!("RCPT TO:<{}>\r\n", job.rcpt_to)).await?;
     read_smtp_reply(&mut reader, &mut line, 250).await?;
 
     smtp_write(&mut write_half, "DATA\r\n").await?;
@@ -365,9 +370,7 @@ async fn smtp_write<W: tokio::io::AsyncWrite + Unpin + ?Sized>(
     w: &mut W,
     data: impl AsRef<[u8]>,
 ) -> Result<(), String> {
-    w.write_all(data.as_ref())
-        .await
-        .map_err(|e| e.to_string())
+    w.write_all(data.as_ref()).await.map_err(|e| e.to_string())
 }
 
 async fn read_smtp_reply<R: tokio::io::AsyncBufRead + Unpin>(
@@ -407,14 +410,10 @@ mod tests {
 
     #[test]
     fn normalize_rewrite_appends_mxdeliv() {
-        assert_eq!(
-            normalize_rewrite_url("1.1.1.1"),
-            "https://1.1.1.1/mxdeliv"
-        );
+        assert_eq!(normalize_rewrite_url("1.1.1.1"), "https://1.1.1.1/mxdeliv");
         assert_eq!(
             normalize_rewrite_url("https://relay.example.com"),
             "https://relay.example.com/mxdeliv"
         );
     }
-
 }

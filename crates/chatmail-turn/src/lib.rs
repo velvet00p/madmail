@@ -27,7 +27,7 @@ pub use allocate_client::turn_allocate;
 pub use turn_client::{turn_allocate_on_socket, TurnClient};
 
 pub use credentials::{hmac_turn_password, turn_metadata_line, TurnCredentialError};
-pub use parse::{parse_turn_metadata, ParsedTurnMetadata, ParseTurnMetadataError};
+pub use parse::{parse_turn_metadata, ParseTurnMetadataError, ParsedTurnMetadata};
 pub use runner::{
     spawn_turn_server, spawn_turn_server_with_opts, turn_debug_from_env,
     turn_force_relay_test_from_env, TurnServerHandle, TurnSpawnOpts,

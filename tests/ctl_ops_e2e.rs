@@ -2,15 +2,15 @@
 
 use std::process::Command;
 
-use assert_cmd::cargo::cargo_bin;
 use chatmail_config::effective_app_db_path;
 use chatmail_config::AppConfig;
 use chatmail_db::{get_bool_setting, get_setting, init_db, settings_keys};
+use chatmail_integration::chatmail_bin;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
 fn chatmail() -> assert_cmd::Command {
-    Command::new(cargo_bin("chatmail")).into()
+    Command::new(chatmail_bin()).into()
 }
 
 fn state_argv(state_dir: &str) -> Vec<String> {
@@ -77,7 +77,10 @@ fn e2e_language_set() {
     rt.block_on(async {
         let pool = init_db(&db_path).await.unwrap();
         assert_eq!(
-            get_setting(&pool, settings_keys::LANGUAGE).await.unwrap().as_deref(),
+            get_setting(&pool, settings_keys::LANGUAGE)
+                .await
+                .unwrap()
+                .as_deref(),
             Some("es")
         );
     });

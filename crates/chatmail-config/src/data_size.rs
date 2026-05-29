@@ -76,11 +76,11 @@ pub fn format_data_size(bytes: u64) -> String {
     const G: u64 = 1024 * 1024 * 1024;
     const M: u64 = 1024 * 1024;
     const K: u64 = 1024;
-    if bytes >= G && bytes % G == 0 {
+    if bytes >= G && bytes.is_multiple_of(G) {
         format!("{}G", bytes / G)
-    } else if bytes >= M && bytes % M == 0 {
+    } else if bytes >= M && bytes.is_multiple_of(M) {
         format!("{}M", bytes / M)
-    } else if bytes >= K && bytes % K == 0 {
+    } else if bytes >= K && bytes.is_multiple_of(K) {
         format!("{}K", bytes / K)
     } else {
         format!("{bytes}B")
@@ -226,9 +226,6 @@ submission tcp://0.0.0.0:587 {
             max_message_size: Some("32M".into()),
             ..Default::default()
         };
-        assert_eq!(
-            effective_max_message_bytes(&cfg),
-            32 * 1024 * 1024
-        );
+        assert_eq!(effective_max_message_bytes(&cfg), 32 * 1024 * 1024);
     }
 }

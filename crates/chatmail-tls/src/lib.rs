@@ -38,8 +38,9 @@ pub fn load_server_config(cert_path: &Path, key_path: &Path) -> Result<Arc<Serve
 }
 
 fn load_certs(path: &Path) -> Result<Vec<CertificateDer<'static>>> {
-    let file = File::open(path)
-        .map_err(|e| ChatmailError::config(format!("open TLS certificate {}: {e}", path.display())))?;
+    let file = File::open(path).map_err(|e| {
+        ChatmailError::config(format!("open TLS certificate {}: {e}", path.display()))
+    })?;
     let mut reader = BufReader::new(file);
     let mut out = Vec::new();
     for item in certs(&mut reader) {
@@ -56,14 +57,19 @@ fn load_certs(path: &Path) -> Result<Vec<CertificateDer<'static>>> {
 }
 
 fn load_private_key(path: &Path) -> Result<PrivateKeyDer<'static>> {
-    let file = File::open(path)
-        .map_err(|e| ChatmailError::config(format!("open TLS private key {}: {e}", path.display())))?;
+    let file = File::open(path).map_err(|e| {
+        ChatmailError::config(format!("open TLS private key {}: {e}", path.display()))
+    })?;
     let mut reader = BufReader::new(file);
-    if let Some(key) = pkcs8_private_keys(&mut reader).filter_map(|r| r.ok()).next() {
+    if let Some(key) = pkcs8_private_keys(&mut reader)
+        .filter_map(|r| r.ok())
+        .next()
+    {
         return Ok(PrivateKeyDer::Pkcs8(key));
     }
-    let file = File::open(path)
-        .map_err(|e| ChatmailError::config(format!("open TLS private key {}: {e}", path.display())))?;
+    let file = File::open(path).map_err(|e| {
+        ChatmailError::config(format!("open TLS private key {}: {e}", path.display()))
+    })?;
     let mut reader = BufReader::new(file);
     let key = rsa_private_keys(&mut reader)
         .filter_map(|r| r.ok())

@@ -23,14 +23,13 @@ use serde_json::{json, Value};
 use chatmail_db::{get_bool_setting, set_setting};
 use chatmail_shadowsocks::resolve_runtime;
 
+use super::settings::generic_setting;
 use super::status_storage::db_err;
 use super::toggles::trigger_soft_reload;
-use super::settings::generic_setting;
 use super::AdminResult;
 use crate::AdminState;
 
-pub const HTTP_PROXY_NOT_IMPLEMENTED: &str =
-    "HTTP proxy is not implemented in chatmail-rs";
+pub const HTTP_PROXY_NOT_IMPLEMENTED: &str = "HTTP proxy is not implemented in chatmail-rs";
 
 const SS_NOT_CONFIGURED: &str =
     "Shadowsocks is not configured in maddy.conf (set ss_addr and ss_password in the chatmail block)";
@@ -64,18 +63,19 @@ pub async fn proxy_transport_disabled(method: &str, body: &Value) -> AdminResult
 }
 
 /// `GET /admin/services/shadowsocks`.
-pub async fn proxy_service(st: &AdminState, method: &str, body: &Value, db_key: &str) -> AdminResult {
+pub async fn proxy_service(
+    st: &AdminState,
+    method: &str,
+    body: &Value,
+    db_key: &str,
+) -> AdminResult {
     if !st.file_config.ss_configured() {
         return ss_not_configured_service(method, body, db_key).await;
     }
     proxy_toggle_service(st, method, body, db_key).await
 }
 
-async fn ss_not_configured_service(
-    method: &str,
-    body: &Value,
-    db_key: &str,
-) -> AdminResult {
+async fn ss_not_configured_service(method: &str, body: &Value, db_key: &str) -> AdminResult {
     match method {
         "GET" => Ok((200, Some(json!({ "status": "disabled" })))),
         "POST" => {
@@ -102,7 +102,9 @@ async fn proxy_toggle_service(
 ) -> AdminResult {
     match method {
         "GET" => {
-            let on = get_bool_setting(&st.pool, db_key, true).await.map_err(db_err)?;
+            let on = get_bool_setting(&st.pool, db_key, true)
+                .await
+                .map_err(db_err)?;
             let status = if on { "enabled" } else { "disabled" };
             Ok((200, Some(json!({ "status": status }))))
         }
@@ -145,12 +147,7 @@ async fn http_proxy_setting(method: &str) -> AdminResult {
     }
 }
 
-async fn ss_named_setting(
-    st: &AdminState,
-    method: &str,
-    body: &Value,
-    name: &str,
-) -> AdminResult {
+async fn ss_named_setting(st: &AdminState, method: &str, body: &Value, name: &str) -> AdminResult {
     if !st.file_config.ss_configured() {
         return Err((400, SS_NOT_CONFIGURED.into()));
     }
@@ -196,18 +193,7 @@ pub async fn http_proxy_service(st: &AdminState, method: &str, body: &Value) -> 
 /// Shadowsocks snapshot for `GET /admin/settings`.
 pub async fn shadowsocks_settings_snapshot(
     st: &AdminState,
-) -> Result<
-    (
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-    ),
-    (u16, String),
-> {
+) -> Result<(String, String, String, String, String, String, String), (u16, String)> {
     if !st.file_config.ss_configured() {
         return Ok((
             "disabled".into(),
@@ -219,14 +205,9 @@ pub async fn shadowsocks_settings_snapshot(
             String::new(),
         ));
     }
-    let rt = resolve_runtime(
-        &st.pool,
-        &st.file_config,
-        &st.mail_domain,
-        &st.state_dir,
-    )
-    .await
-    .map_err(db_err)?;
+    let rt = resolve_runtime(&st.pool, &st.file_config, &st.mail_domain, &st.state_dir)
+        .await
+        .map_err(db_err)?;
 
     let ss_enabled = if rt.enabled { "enabled" } else { "disabled" };
     let ss_ws = "disabled";

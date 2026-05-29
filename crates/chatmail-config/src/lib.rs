@@ -16,18 +16,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 pub mod cli;
-pub mod install_cli;
 pub mod client_mail;
+pub mod config_www;
+pub mod credential_policy;
 pub mod data_size;
 pub mod db_path;
-pub mod paths;
-pub mod queue;
+pub mod install_cli;
+pub mod maddy;
 mod madmail_lexer;
 mod madmail_parse;
-pub mod credential_policy;
-pub mod maddy;
 pub mod parse;
-pub mod config_www;
+pub mod paths;
+pub mod queue;
 
 pub use config_www::update_config_www_dir;
 
@@ -38,33 +38,33 @@ pub use cli::{
     PortCommand, PortServiceCommand, RegistrationCommand, RegistrationTokensCommand,
     ServiceToggleCommand, SharingCommand, TasksCommand, UninstallArgs,
 };
-pub use paths::{
-    apply_cli_defaults, detect_default_config_path, detect_default_state_dir,
-    is_local_dev_state_dir,
-};
 pub use client_mail::{
-    client_connect_host, effective_http_listen, effective_http_plain_listen,
+    build_dclogin_link, client_connect_host, effective_http_listen, effective_http_plain_listen,
     effective_http_tls_listen, effective_imap_listen, effective_imap_plain_listen,
     effective_imap_tls_listen, effective_smtp_listen, effective_submission_plain_listen,
-    effective_submission_tls_listen, effective_tls_pem_paths, port_from_listen, build_dclogin_link,
-    DbMailPorts, DcloginMailSettings, RuntimeListeners,
+    effective_submission_tls_listen, effective_tls_pem_paths, port_from_listen, DbMailPorts,
+    DcloginMailSettings, RuntimeListeners,
 };
+pub use credential_policy::CredentialPolicy;
 pub use data_size::{
     effective_default_quota_bytes, effective_max_message_bytes, format_data_size, parse_data_size,
     resolve_max_message_bytes, DEFAULT_MAX_MESSAGE_BYTES, DEFAULT_MAX_MESSAGE_SIZE,
     DEFAULT_QUOTA_BYTES,
 };
 pub use db_path::{
-    effective_app_db_path, effective_database_config, DatabaseConfig, DbDriver,
-    CHATMAIL_RS_DB, MADMAIL_CREDENTIALS_DB,
+    effective_app_db_path, effective_database_config, DatabaseConfig, DbDriver, CHATMAIL_RS_DB,
+    MADMAIL_CREDENTIALS_DB,
 };
-pub use madmail_parse::{read as read_maddy_ast, ConfigAst, Node, ParseError};
 pub use maddy::{
     maddy_listen_to_socket_addr, parse_duration, parse_maddy_conf_str, parse_maddy_config,
-    resolve_state_path,
+    resolve_state_path, ParseDurationError,
 };
-pub use credential_policy::CredentialPolicy;
+pub use madmail_parse::{read as read_maddy_ast, ConfigAst, Node, ParseError};
 pub use parse::load_config;
+pub use paths::{
+    apply_cli_defaults, detect_default_config_path, detect_default_state_dir,
+    is_local_dev_state_dir,
+};
 pub use queue::QueueSettings;
 
 /// Server configuration (static `maddy.conf` / `chatmail.toml` + derived paths).
@@ -180,18 +180,12 @@ impl AppConfig {
     /// Shadowsocks is configured in `maddy.conf` (`ss_addr` + `ss_password`).
     pub fn ss_configured(&self) -> bool {
         self.ss_addr.as_ref().is_some_and(|s| !s.is_empty())
-            && self
-                .ss_password
-                .as_ref()
-                .is_some_and(|s| !s.is_empty())
+            && self.ss_password.as_ref().is_some_and(|s| !s.is_empty())
     }
 
     /// Canonical `$(primary_domain)` (IPs as `[x.x.x.x]`).
     pub fn effective_primary_domain(&self, hostname_fallback: &str) -> String {
-        let raw = self
-            .primary_domain
-            .as_deref()
-            .unwrap_or(hostname_fallback);
+        let raw = self.primary_domain.as_deref().unwrap_or(hostname_fallback);
         chatmail_types::wrap_ip_domain(raw)
     }
 
@@ -259,20 +253,12 @@ impl AppConfig {
 
     /// Whether TURN discovery + relay are configured in static config.
     pub fn turn_configured(&self) -> bool {
-        self.turn_enable
-            && self
-                .turn_secret
-                .as_ref()
-                .is_some_and(|s| !s.is_empty())
+        self.turn_enable && self.turn_secret.as_ref().is_some_and(|s| !s.is_empty())
     }
 
     /// Whether Iroh relay + IMAP discovery are configured in static config.
     pub fn iroh_configured(&self) -> bool {
-        self.iroh_enable
-            || self
-                .iroh_relay_url
-                .as_ref()
-                .is_some_and(|s| !s.is_empty())
+        self.iroh_enable || self.iroh_relay_url.as_ref().is_some_and(|s| !s.is_empty())
     }
 
     /// Default Iroh relay URL from `iroh_relay_url`, else `http://{host}:{port}`.
@@ -288,7 +274,11 @@ impl AppConfig {
             .clone()
             .or_else(|| self.hostname.clone())
             .unwrap_or_else(|| hostname_fallback.to_string());
-        let port = if self.iroh_port == 0 { 3340 } else { self.iroh_port };
+        let port = if self.iroh_port == 0 {
+            3340
+        } else {
+            self.iroh_port
+        };
         Some(format!("http://{host}:{port}"))
     }
 }

@@ -56,7 +56,11 @@ pub struct InstallConfig {
 
 pub fn render_maddy_conf(c: &InstallConfig) -> String {
     let log_block = "# Disable logging as requested\nlog off\n";
-    let require_tls_smtp = if c.turn_off_tls { "" } else { "        require_tls\n" };
+    let require_tls_smtp = if c.turn_off_tls {
+        ""
+    } else {
+        "        require_tls\n"
+    };
     let require_tls_sub = if c.turn_off_tls {
         ""
     } else {
@@ -129,7 +133,11 @@ turn udp://0.0.0.0:{port} tcp://0.0.0.0:{port} {{
     };
 
     let turn_off = if c.turn_off_tls { "yes" } else { "no" };
-    let contact = if c.enable_contact_sharing { "yes" } else { "no" };
+    let contact = if c.enable_contact_sharing {
+        "yes"
+    } else {
+        "no"
+    };
     let lang = c.language.as_str();
 
     let chatmail_http = if c.enable_chatmail {

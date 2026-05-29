@@ -139,7 +139,8 @@ pub fn init_metrics() {
 pub fn exposition_text() -> Result<String, prometheus::Error> {
     init_metrics();
     let bytes = gather_bytes()?;
-    Ok(String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(&e.into_bytes()).into_owned()))
+    Ok(String::from_utf8(bytes)
+        .unwrap_or_else(|e| String::from_utf8_lossy(&e.into_bytes()).into_owned()))
 }
 
 pub(crate) fn gather_bytes() -> Result<Vec<u8>, prometheus::Error> {
@@ -215,11 +216,9 @@ mod tests {
         assert!(body.contains("maddy_queue_length"));
 
         let labels = format!(r#"module="{MODULE}""#);
-        let started =
-            sample_value(&body, "maddy_smtp_started_transactions", &labels).unwrap();
+        let started = sample_value(&body, "maddy_smtp_started_transactions", &labels).unwrap();
         assert!(started >= 1.0, "started={started}");
-        let queue =
-            sample_value(&body, "maddy_queue_length", r#"location="/tmp/q""#).unwrap();
+        let queue = sample_value(&body, "maddy_queue_length", r#"location="/tmp/q""#).unwrap();
         assert!((queue - 2.0).abs() < f64::EPSILON, "queue={queue}");
     }
 }

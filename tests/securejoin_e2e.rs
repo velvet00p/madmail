@@ -44,7 +44,8 @@ async fn securejoin_vc_request_smtp_to_imap() {
     let body = imap_fetch_first_body(servers.imap_addr, "alice@test", "alice-secret").await;
 
     assert!(
-        body.to_ascii_lowercase().contains("secure-join: vc-request"),
+        body.to_ascii_lowercase()
+            .contains("secure-join: vc-request"),
         "IMAP body should contain handshake line, got:\n{body}"
     );
     assert!(

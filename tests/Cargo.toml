@@ -32,10 +32,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util", 
 tokio-util = { workspace = true }
 
 [[test]]
-name = "boot_test"
-path = "boot_test.rs"
-
-[[test]]
 name = "securejoin_e2e"
 path = "securejoin_e2e.rs"
 

@@ -152,7 +152,12 @@ pub async fn run(socket: WebSocket, st: WwwState, q: WsQuery) -> Result<(), Stri
     Ok(())
 }
 
-async fn dispatch(st: &WwwState, user: &str, writer: &WsWriter, req: &WsRequest) -> Result<(), String> {
+async fn dispatch(
+    st: &WwwState,
+    user: &str,
+    writer: &WsWriter,
+    req: &WsRequest,
+) -> Result<(), String> {
     let req_id = req.req_id.clone().unwrap_or_default();
     let respond = |data: Value| {
         writer.send_json(WsResponse {
@@ -181,8 +186,8 @@ async fn dispatch(st: &WwwState, user: &str, writer: &WsWriter, req: &WsRequest)
                 to: Vec<String>,
                 body: String,
             }
-            let d: SendData = serde_json::from_value(data)
-                .map_err(|e| format!("invalid send payload: {e}"))?;
+            let d: SendData =
+                serde_json::from_value(data).map_err(|e| format!("invalid send payload: {e}"))?;
             if d.to.is_empty() {
                 respond_err("missing recipients").await?;
                 return Ok(());
@@ -202,8 +207,8 @@ async fn dispatch(st: &WwwState, user: &str, writer: &WsWriter, req: &WsRequest)
                 mailbox: String,
                 uid: u32,
             }
-            let d: FetchData = serde_json::from_value(data)
-                .map_err(|e| format!("invalid fetch payload: {e}"))?;
+            let d: FetchData =
+                serde_json::from_value(data).map_err(|e| format!("invalid fetch payload: {e}"))?;
             if d.mailbox != "INBOX" {
                 respond_err("unknown mailbox").await?;
                 return Ok(());
@@ -266,8 +271,8 @@ async fn dispatch(st: &WwwState, user: &str, writer: &WsWriter, req: &WsRequest)
             struct FlagsData {
                 op: String,
             }
-            let d: FlagsData = serde_json::from_value(data)
-                .map_err(|e| format!("invalid flags payload: {e}"))?;
+            let d: FlagsData =
+                serde_json::from_value(data).map_err(|e| format!("invalid flags payload: {e}"))?;
             match d.op.as_str() {
                 "add" | "remove" | "set" => respond(json!({ "status": "ok" })).await?,
                 _ => respond_err("invalid op: must be add, remove, or set").await?,
@@ -280,8 +285,8 @@ async fn dispatch(st: &WwwState, user: &str, writer: &WsWriter, req: &WsRequest)
                 mailbox: String,
                 uid: u32,
             }
-            let d: DeleteData = serde_json::from_value(data)
-                .map_err(|e| format!("invalid delete payload: {e}"))?;
+            let d: DeleteData =
+                serde_json::from_value(data).map_err(|e| format!("invalid delete payload: {e}"))?;
             if d.mailbox != "INBOX" {
                 respond_err("unknown mailbox").await?;
                 return Ok(());

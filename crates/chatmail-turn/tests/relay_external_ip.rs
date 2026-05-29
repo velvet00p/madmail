@@ -37,9 +37,10 @@ async fn turn_relay_advertises_external_ip() {
     };
     let external = SocketAddr::new(IpAddr::V4(RELAY_PUBLIC), listen.port());
 
-    let _srv = spawn_turn_server_with_opts(secret, realm, listen, external, TurnSpawnOpts::for_tests())
-        .await
-        .expect("spawn");
+    let _srv =
+        spawn_turn_server_with_opts(secret, realm, listen, external, TurnSpawnOpts::for_tests())
+            .await
+            .expect("spawn");
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let now = std::time::SystemTime::now()
@@ -56,5 +57,9 @@ async fn turn_relay_advertises_external_ip() {
         IpAddr::V4(RELAY_PUBLIC),
         "clients must see the public relay IP in ICE candidates, not 127.0.0.1"
     );
-    assert_ne!(relay.port(), listen.port(), "relay port must not be control port");
+    assert_ne!(
+        relay.port(),
+        listen.port(),
+        "relay port must not be control port"
+    );
 }

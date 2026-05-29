@@ -17,7 +17,6 @@
 
 pub mod assets;
 pub mod context_cache;
-mod www_facts;
 pub mod export;
 pub mod gate;
 pub mod handlers;
@@ -26,6 +25,7 @@ pub mod router;
 pub mod template;
 pub mod webimap;
 pub mod webimap_ws;
+mod www_facts;
 
 pub use export::export_www_files;
 pub use router::{www_router, WwwState};

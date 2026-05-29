@@ -31,13 +31,16 @@ pub fn generate_self_signed(
     key_path: &Path,
 ) -> Result<()> {
     let mut names = vec![
-        primary_domain.trim_matches(|c| c == '[' || c == ']').to_string(),
+        primary_domain
+            .trim_matches(|c| c == '[' || c == ']')
+            .to_string(),
         hostname.trim_matches(|c| c == '[' || c == ']').to_string(),
     ];
     names.sort();
     names.dedup();
 
-    let cert = generate_simple_self_signed(names).map_err(|e| ChatmailError::config(e.to_string()))?;
+    let cert =
+        generate_simple_self_signed(names).map_err(|e| ChatmailError::config(e.to_string()))?;
 
     write_pem_pair(
         cert_path,
@@ -47,7 +50,12 @@ pub fn generate_self_signed(
     )
 }
 
-fn write_pem_pair(cert_path: &Path, key_path: &Path, cert_pem: &[u8], key_pem: &[u8]) -> Result<()> {
+fn write_pem_pair(
+    cert_path: &Path,
+    key_path: &Path,
+    cert_pem: &[u8],
+    key_pem: &[u8],
+) -> Result<()> {
     if let Some(parent) = cert_path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| ChatmailError::config(format!("create {}: {e}", parent.display())))?;

@@ -203,8 +203,7 @@ fn postgres_connect_options(dsn: &str) -> Result<PgConnectOptions> {
     if dsn.starts_with("postgres://") || dsn.starts_with("postgresql://") {
         return PgConnectOptions::from_str(dsn).map_err(ChatmailError::from);
     }
-    let params = parse_libpq_dsn(dsn)
-        .map_err(|e| ChatmailError::config(e))?;
+    let params = parse_libpq_dsn(dsn).map_err(ChatmailError::config)?;
     let mut opts = PgConnectOptions::new_without_pgpass();
     if let Some(host) = params.get("host") {
         opts = opts.host(host);
@@ -332,13 +331,24 @@ pub fn pg_sql(sql: &str) -> String {
     out
 }
 
+fn map_migration_error(e: sqlx::migrate::MigrateError) -> ChatmailError {
+    if let sqlx::migrate::MigrateError::VersionMismatch(version) = e {
+        return ChatmailError::config(format!(
+            "migration {version} no longer matches the database checksum (the .sql file changed after it was applied). \
+             For local SQLite dev, run `make reset-db` then `make restart`"
+        ));
+    }
+    ChatmailError::Db(sqlx::Error::Migrate(Box::new(e)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn parse_libpq_dsn_fields() {
-        let dsn = "host=127.0.0.1 port=5432 user=maddy password=secret dbname=maddy sslmode=disable";
+        let dsn =
+            "host=127.0.0.1 port=5432 user=maddy password=secret dbname=maddy sslmode=disable";
         let p = parse_libpq_dsn(dsn).unwrap();
         assert_eq!(p.get("host").map(String::as_str), Some("127.0.0.1"));
         assert_eq!(p.get("port").map(String::as_str), Some("5432"));
@@ -354,14 +364,4 @@ mod tests {
         )
         .expect("libpq DSN should parse");
     }
-}
-
-fn map_migration_error(e: sqlx::migrate::MigrateError) -> ChatmailError {
-    if let sqlx::migrate::MigrateError::VersionMismatch(version) = e {
-        return ChatmailError::config(format!(
-            "migration {version} no longer matches the database checksum (the .sql file changed after it was applied). \
-             For local SQLite dev, run `make reset-db` then `make restart`"
-        ));
-    }
-    ChatmailError::Db(sqlx::Error::Migrate(Box::new(e)))
 }

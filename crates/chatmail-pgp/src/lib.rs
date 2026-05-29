@@ -38,7 +38,9 @@ pub fn enforce_encryption(raw: &[u8], opts: &EnforceOptions) -> Result<()> {
     }
 
     let Some(msg) = MessageParser::default().parse(raw) else {
-        return Err(ChatmailError::EncryptionNeeded("unparseable message".into()));
+        return Err(ChatmailError::EncryptionNeeded(
+            "unparseable message".into(),
+        ));
     };
 
     if is_allowed_bounce(&msg, &opts.mail_from) {

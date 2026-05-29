@@ -53,8 +53,8 @@ pub async fn message_size(st: &AdminState, method: &str, body: &Value) -> AdminR
             ))
         }
         "PUT" => {
-            let req: MessageSizeSet = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: MessageSizeSet =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if req.size.trim().is_empty() {
                 return Err((400, "size is required".into()));
             }

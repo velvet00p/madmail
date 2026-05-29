@@ -32,13 +32,7 @@ async fn dispatch_accounts_create_delete_and_blocklist() {
 
     let cli = parse_cli(
         dir.path(),
-        &[
-            "accounts",
-            "create",
-            email,
-            "--password",
-            password,
-        ],
+        &["accounts", "create", email, "--password", password],
     );
     dispatch(&cli).await.expect("accounts create");
 
@@ -52,7 +46,9 @@ async fn dispatch_accounts_create_delete_and_blocklist() {
     assert!(!passwords::user_exists(&pool, email).await.unwrap());
     assert!(blocklist::is_blocked(&pool, email).await.unwrap());
     let rows = blocklist::list_blocked_users(&pool).await.unwrap();
-    assert!(rows.iter().any(|(u, r, _)| u == email && r == CLI_DELETE_REASON));
+    assert!(rows
+        .iter()
+        .any(|(u, r, _)| u == email && r == CLI_DELETE_REASON));
 }
 
 #[tokio::test]
@@ -79,7 +75,9 @@ async fn dispatch_accounts_ban_uses_custom_reason() {
     dispatch(&cli).await.unwrap();
 
     let rows = blocklist::list_blocked_users(&pool).await.unwrap();
-    assert!(rows.iter().any(|(u, r, _)| u == email && r == "spam via test"));
+    assert!(rows
+        .iter()
+        .any(|(u, r, _)| u == email && r == "spam via test"));
 }
 
 #[tokio::test]
@@ -117,10 +115,7 @@ async fn dispatch_blocklist_add_and_remove() {
     let (dir, _args, _db_path, pool) = setup_ctl_env().await;
     let user = "blocked@example.org";
 
-    let cli = parse_cli(
-        dir.path(),
-        &["blocklist", "add", user, "manual block test"],
-    );
+    let cli = parse_cli(dir.path(), &["blocklist", "add", user, "manual block test"]);
     dispatch(&cli).await.unwrap();
     assert!(blocklist::is_blocked(&pool, user).await.unwrap());
 
@@ -148,10 +143,7 @@ async fn dispatch_accounts_export_import_roundtrip() {
 
     let export_path = dir.path().join("accounts.json");
     let export_s = export_path.to_str().unwrap();
-    let cli = parse_cli(
-        dir.path(),
-        &["accounts", "export", "-o", export_s],
-    );
+    let cli = parse_cli(dir.path(), &["accounts", "export", "-o", export_s]);
     dispatch(&cli).await.unwrap();
     assert!(export_path.is_file());
 
@@ -162,10 +154,7 @@ async fn dispatch_accounts_export_import_roundtrip() {
     blocklist::unblock_user(&pool, email).await.unwrap();
 
     let import_s = export_path.to_str().unwrap();
-    let cli = parse_cli(
-        dir.path(),
-        &["accounts", "import", import_s],
-    );
+    let cli = parse_cli(dir.path(), &["accounts", "import", import_s]);
     dispatch(&cli).await.unwrap();
     assert!(passwords::user_exists(&pool, email).await.unwrap());
 }
@@ -188,13 +177,7 @@ async fn dispatch_delete_top_level_matches_accounts_delete() {
 
     let cli = parse_cli(
         dir.path(),
-        &[
-            "accounts",
-            "create",
-            email,
-            "--password",
-            "topdel-pass-99",
-        ],
+        &["accounts", "create", email, "--password", "topdel-pass-99"],
     );
     dispatch(&cli).await.unwrap();
 
@@ -217,7 +200,9 @@ fn accounts_and_blocklist_subcommands_parse() {
     );
     assert!(matches!(
         cli.command,
-        Some(Command::Accounts(AccountsCommand::CreateRandom { json_only: true }))
+        Some(Command::Accounts(AccountsCommand::CreateRandom {
+            json_only: true
+        }))
     ));
 
     let cli = parse_cli(

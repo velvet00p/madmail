@@ -50,6 +50,7 @@ impl ListenerPortsStore {
         Self::default()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn set_runtime(
         &self,
         smtp_addr: impl Into<String>,

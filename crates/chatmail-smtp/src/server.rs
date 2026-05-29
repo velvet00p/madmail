@@ -17,13 +17,13 @@
 
 use std::sync::Arc;
 
+use chatmail_db::DbPool;
 use chatmail_state::AppState;
 use chatmail_types::Result;
 use rustls::ServerConfig;
-use chatmail_db::DbPool;
 use tokio::net::TcpListener;
-use tokio_util::sync::CancellationToken;
 use tokio_rustls::TlsAcceptor;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::session::{SmtpSession, SmtpSessionConfig};

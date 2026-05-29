@@ -103,8 +103,8 @@ pub fn resolve_runtime_from_settings(
         file.ss_cipher.as_deref().unwrap_or("aes-128-gcm"),
     );
     let listen_addr = listen_from_settings(&ss_addr, settings);
-    let enabled = file.ss_configured()
-        && bool_from_settings(settings, settings_keys::SS_ENABLED, true);
+    let enabled =
+        file.ss_configured() && bool_from_settings(settings, settings_keys::SS_ENABLED, true);
     // chatmail-rs: raw TCP Shadowsocks only (no Xray WS/gRPC listeners).
     let ws_enabled = false;
     let grpc_enabled = false;
@@ -135,7 +135,12 @@ fn string_from_settings(map: &HashMap<String, String>, key: &str, default: &str)
 
 fn bool_from_settings(map: &HashMap<String, String>, key: &str, default: bool) -> bool {
     map.get(key)
-        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "enabled"))
+        .map(|v| {
+            matches!(
+                v.to_ascii_lowercase().as_str(),
+                "true" | "1" | "yes" | "enabled"
+            )
+        })
         .unwrap_or(default)
 }
 

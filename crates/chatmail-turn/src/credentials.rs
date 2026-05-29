@@ -84,12 +84,8 @@ mod tests {
         const TTL: u64 = 86_400;
         let expiry = (NOW + TTL as i64).to_string();
         let password = hmac_turn_password("test-secret", &expiry).unwrap();
-        let line =
-            turn_metadata_line("turn.example.com", 3478, "test-secret", TTL, NOW).unwrap();
-        assert_eq!(
-            line,
-            format!("turn.example.com:3478:{expiry}:{password}")
-        );
+        let line = turn_metadata_line("turn.example.com", 3478, "test-secret", TTL, NOW).unwrap();
+        assert_eq!(line, format!("turn.example.com:3478:{expiry}:{password}"));
     }
 
     #[test]

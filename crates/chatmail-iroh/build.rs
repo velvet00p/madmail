@@ -38,7 +38,10 @@ fn main() {
     if binary.exists() {
         let dest = out_dir.join("iroh-relay");
         fs::copy(&binary, &dest).expect("copy iroh-relay to OUT_DIR");
-        println!("cargo:rustc-env=CHATMAIL_IROH_RELAY_PATH={}", dest.display());
+        println!(
+            "cargo:rustc-env=CHATMAIL_IROH_RELAY_PATH={}",
+            dest.display()
+        );
         println!(
             "cargo:rustc-env=CHATMAIL_IROH_RELAY_VERSION={}",
             fs::read_to_string(&version_file)

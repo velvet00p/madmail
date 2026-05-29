@@ -67,19 +67,23 @@ mod tests {
 
     #[test]
     fn accepts_boundary_max_localpart() {
-        let mut p = CredentialPolicy::default();
-        p.max_username_length = 12;
+        let p = CredentialPolicy {
+            max_username_length: 12,
+            ..Default::default()
+        };
         let local = "a".repeat(12);
         assert!(validate_localpart_and_password(&p, &format!("{local}@x.org"), "12345678").is_ok());
     }
 
     #[test]
     fn rejects_localpart_one_over_max() {
-        let mut p = CredentialPolicy::default();
-        p.max_username_length = 8;
+        let p = CredentialPolicy {
+            max_username_length: 8,
+            ..Default::default()
+        };
         let local = "a".repeat(9);
-        let err = validate_localpart_and_password(&p, &format!("{local}@x.org"), "12345678")
-            .unwrap_err();
+        let err =
+            validate_localpart_and_password(&p, &format!("{local}@x.org"), "12345678").unwrap_err();
         assert!(matches!(err, ChatmailError::Config(msg) if msg.contains("between 8 and 8")));
     }
 
@@ -93,8 +97,7 @@ mod tests {
     #[test]
     fn password_error_mentions_min_length() {
         let p = CredentialPolicy::default();
-        let err = validate_localpart_and_password(&p, "12345678@x.org", "short")
-            .unwrap_err();
+        let err = validate_localpart_and_password(&p, "12345678@x.org", "short").unwrap_err();
         assert!(matches!(err, ChatmailError::Config(msg) if msg.contains("at least 8")));
     }
 }

@@ -36,12 +36,7 @@ use crate::AdminState;
 
 pub type AdminResult = Result<(u16, Option<Value>), (u16, String)>;
 
-pub async fn dispatch(
-    st: &AdminState,
-    method: &str,
-    resource: &str,
-    body: &Value,
-) -> AdminResult {
+pub async fn dispatch(st: &AdminState, method: &str, resource: &str, body: &Value) -> AdminResult {
     match resource {
         "/admin/status" => status_storage::status(st, method).await,
         "/admin/overview" => status_storage::overview(st, method).await,
@@ -50,13 +45,57 @@ pub async fn dispatch(
         "/admin/reload" => status_storage::reload(st, method).await,
         "/admin/registration" => toggles::registration(st, method, body).await,
         "/admin/registration/jit" => toggles::jit(st, method, body).await,
-        "/admin/services/turn" => toggles::service_bool(st, method, body, chatmail_db::settings_keys::TURN_ENABLED).await,
-        "/admin/services/iroh" => toggles::service_bool(st, method, body, chatmail_db::settings_keys::IROH_ENABLED).await,
-        "/admin/services/admin_web" => toggles::service_bool(st, method, body, chatmail_db::settings_keys::ADMIN_WEB_ENABLED).await,
-        "/admin/services/auto_purge_seen" => toggles::service_bool(st, method, body, chatmail_db::settings_keys::AUTO_PURGE_SEEN).await,
-        "/admin/services/message_retention" => toggles::service_bool(st, method, body, chatmail_db::settings_keys::MESSAGE_RETENTION_ENABLED).await,
-        "/admin/services/webimap" => toggles::service_bool(st, method, body, chatmail_db::settings_keys::WEBIMAP_ENABLED).await,
-        "/admin/services/websmtp" => toggles::service_bool(st, method, body, chatmail_db::settings_keys::WEBSMTP_ENABLED).await,
+        "/admin/services/turn" => {
+            toggles::service_bool(st, method, body, chatmail_db::settings_keys::TURN_ENABLED).await
+        }
+        "/admin/services/iroh" => {
+            toggles::service_bool(st, method, body, chatmail_db::settings_keys::IROH_ENABLED).await
+        }
+        "/admin/services/admin_web" => {
+            toggles::service_bool(
+                st,
+                method,
+                body,
+                chatmail_db::settings_keys::ADMIN_WEB_ENABLED,
+            )
+            .await
+        }
+        "/admin/services/auto_purge_seen" => {
+            toggles::service_bool(
+                st,
+                method,
+                body,
+                chatmail_db::settings_keys::AUTO_PURGE_SEEN,
+            )
+            .await
+        }
+        "/admin/services/message_retention" => {
+            toggles::service_bool(
+                st,
+                method,
+                body,
+                chatmail_db::settings_keys::MESSAGE_RETENTION_ENABLED,
+            )
+            .await
+        }
+        "/admin/services/webimap" => {
+            toggles::service_bool(
+                st,
+                method,
+                body,
+                chatmail_db::settings_keys::WEBIMAP_ENABLED,
+            )
+            .await
+        }
+        "/admin/services/websmtp" => {
+            toggles::service_bool(
+                st,
+                method,
+                body,
+                chatmail_db::settings_keys::WEBSMTP_ENABLED,
+            )
+            .await
+        }
         "/admin/services/shadowsocks" => {
             proxy::proxy_service(st, method, body, chatmail_db::settings_keys::SS_ENABLED).await
         }
@@ -80,7 +119,10 @@ pub async fn dispatch(
         r if r.starts_with("/admin/settings/") => {
             let name = r.strip_prefix("/admin/settings/").unwrap_or("");
             if proxy::PROXY_SETTING_NAMES.contains(&name)
-                || matches!(name, "ss_port" | "ss_ws_port" | "ss_grpc_port" | "ss_cipher" | "ss_password")
+                || matches!(
+                    name,
+                    "ss_port" | "ss_ws_port" | "ss_grpc_port" | "ss_cipher" | "ss_password"
+                )
             {
                 proxy::proxy_setting(st, method, body, name).await
             } else {

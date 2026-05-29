@@ -60,14 +60,12 @@ pub fn spawn_xray_transports(
         }
     };
 
-    let listen: SocketAddr = rt.listen_addr.parse().map_err(|e| {
-        chatmail_types::ChatmailError::config(format!("invalid ss_addr: {e}"))
-    })?;
+    let listen: SocketAddr = rt
+        .listen_addr
+        .parse()
+        .map_err(|e| chatmail_types::ChatmailError::config(format!("invalid ss_addr: {e}")))?;
     let method = xray_method(&rt.cipher).ok_or_else(|| {
-        chatmail_types::ChatmailError::config(format!(
-            "unsupported cipher for xray: {}",
-            rt.cipher
-        ))
+        chatmail_types::ChatmailError::config(format!("unsupported cipher for xray: {}", rt.cipher))
     })?;
 
     let host = listen.ip().to_string();
@@ -132,17 +130,12 @@ fn spawn_xray(
     label: &str,
     port: u16,
 ) -> chatmail_types::Result<Option<Child>> {
-    let dir = std::env::temp_dir().join(format!(
-        "chatmail-xray-{label}-{}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&dir).map_err(|e| {
-        chatmail_types::ChatmailError::config(format!("xray temp dir: {e}"))
-    })?;
+    let dir = std::env::temp_dir().join(format!("chatmail-xray-{label}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| chatmail_types::ChatmailError::config(format!("xray temp dir: {e}")))?;
     let path = dir.join("config.json");
-    std::fs::write(&path, serde_json::to_vec_pretty(config).unwrap()).map_err(|e| {
-        chatmail_types::ChatmailError::config(format!("xray config write: {e}"))
-    })?;
+    std::fs::write(&path, serde_json::to_vec_pretty(config).unwrap())
+        .map_err(|e| chatmail_types::ChatmailError::config(format!("xray config write: {e}")))?;
 
     let child = Command::new(xray_bin)
         .args(["run", "-c"])
@@ -181,6 +174,7 @@ fn ws_config(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn grpc_config(
     listen_host: &str,
     port: u16,

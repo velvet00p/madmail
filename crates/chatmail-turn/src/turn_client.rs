@@ -35,7 +35,9 @@ async fn build_client(
 ) -> Result<Client, String> {
     let password = hmac_turn_password(secret, username).map_err(|e| e.to_string())?;
     let server_addr = server.to_string();
-    let conn = UdpSocket::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
+    let conn = UdpSocket::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| e.to_string())?;
     let client = Client::new(ClientConfig {
         stun_serv_addr: server_addr.clone(),
         turn_serv_addr: server_addr,
@@ -67,13 +69,8 @@ impl TurnClient {
         realm: impl AsRef<str>,
         username: impl AsRef<str>,
     ) -> Result<Self, String> {
-        let client = build_client(
-            server,
-            secret.as_ref(),
-            realm.as_ref(),
-            username.as_ref(),
-        )
-        .await?;
+        let client =
+            build_client(server, secret.as_ref(), realm.as_ref(), username.as_ref()).await?;
         Ok(Self {
             client,
             relay: None,
@@ -89,9 +86,7 @@ impl TurnClient {
     }
 
     pub fn relay(&self) -> Option<SocketAddr> {
-        self.relay
-            .as_ref()
-            .and_then(|r| r.local_addr().ok())
+        self.relay.as_ref().and_then(|r| r.local_addr().ok())
     }
 
     /// [RFC 8656] §9 — open permission for `peer_relay` (webrtc turn: first `send_to` on that peer).
@@ -108,10 +103,7 @@ impl TurnClient {
     /// [RFC 8656] §12 — send payload to peer via relay.
     pub async fn send(&self, peer: SocketAddr, data: &[u8]) -> Result<(), String> {
         let relay = self.relay.as_ref().ok_or("allocate first")?;
-        relay
-            .send_to(data, peer)
-            .await
-            .map_err(|e| e.to_string())?;
+        relay.send_to(data, peer).await.map_err(|e| e.to_string())?;
         Ok(())
     }
 

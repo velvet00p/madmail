@@ -33,9 +33,10 @@ async fn turn_dual_allocate_distinct_ports() {
         let s = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         s.local_addr().unwrap()
     };
-    let _srv = spawn_turn_server_with_opts(secret, realm, listen, listen, TurnSpawnOpts::for_tests())
-        .await
-        .unwrap();
+    let _srv =
+        spawn_turn_server_with_opts(secret, realm, listen, listen, TurnSpawnOpts::for_tests())
+            .await
+            .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let u1 = (now() + 3600).to_string();
@@ -46,7 +47,11 @@ async fn turn_dual_allocate_distinct_ports() {
     let r2 = turn_allocate(listen, secret, realm, &u2, None)
         .await
         .expect("second allocate");
-    assert_ne!(r1.port(), r2.port(), "two call legs need distinct relay ports");
+    assert_ne!(
+        r1.port(),
+        r2.port(),
+        "two call legs need distinct relay ports"
+    );
 }
 
 fn now() -> i64 {

@@ -19,7 +19,9 @@ use crate::admin::resolve_admin_token;
 use chatmail_config::Args;
 use chatmail_types::Result;
 
-use super::admin_login_qr::{build_admin_login_qr_url, login_qr_scan_payload, print_login_qr_terminal};
+use super::admin_login_qr::{
+    build_admin_login_qr_url, login_qr_scan_payload, print_login_qr_terminal,
+};
 use super::admin_url::build_admin_url;
 use super::context::CtlContext;
 

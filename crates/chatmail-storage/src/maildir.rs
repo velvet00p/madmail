@@ -52,7 +52,10 @@ impl MailboxStore {
     /// Per-mailbox maildir (INBOX or `folders/{name}/Maildir/`).
     pub fn maildir_for_mailbox(&self, user: &str, mailbox: &str) -> MaildirPaths {
         let root = if mailbox.eq_ignore_ascii_case("INBOX") {
-            self.state_dir.join("mail").join(sanitize_user(user)).join("Maildir")
+            self.state_dir
+                .join("mail")
+                .join(sanitize_user(user))
+                .join("Maildir")
         } else {
             self.state_dir
                 .join("mail")

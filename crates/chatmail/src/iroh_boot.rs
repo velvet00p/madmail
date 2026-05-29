@@ -143,7 +143,10 @@ mod tests {
             .unwrap();
         let cfg = iroh_file_config();
         assert!(!iroh_runtime_enabled(&pool, &cfg).await.unwrap());
-        assert!(iroh_discovery(&pool, &cfg, "mail.test").await.unwrap().is_none());
+        assert!(iroh_discovery(&pool, &cfg, "mail.test")
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]

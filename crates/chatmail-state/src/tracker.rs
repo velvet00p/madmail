@@ -17,9 +17,24 @@
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
+use chatmail_db::DbPool;
 use chatmail_types::Result;
 use dashmap::DashMap;
-use chatmail_db::DbPool;
+
+type FederationStatTuple = (
+    String,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+    i64,
+);
 
 /// Per-domain federation diagnostics (mirrors Madmail `ServerStat`).
 #[derive(Debug)]
@@ -133,9 +148,7 @@ impl FederationTracker {
             .stats
             .entry(key.clone())
             .or_insert_with(|| ServerStat::new(key));
-        entry
-            .successful_deliveries
-            .fetch_add(1, Ordering::Relaxed);
+        entry.successful_deliveries.fetch_add(1, Ordering::Relaxed);
         entry
             .total_latency_ms
             .fetch_add(latency_ms.max(0), Ordering::Relaxed);
@@ -168,37 +181,8 @@ impl FederationTracker {
              FROM federation_server_stats",
             cols.failed_https, cols.success_https
         );
-        let rows: Vec<(
-            String,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-        )> = chatmail_db::db_fetch_all!(
-            pool,
-            (
-                String,
-                i64,
-                i64,
-                i64,
-                i64,
-                i64,
-                i64,
-                i64,
-                i64,
-                i64,
-                i64,
-                i64
-            ),
-            &sql
-        )?;
+        let rows: Vec<FederationStatTuple> =
+            chatmail_db::db_fetch_all!(pool, FederationStatTuple, &sql)?;
 
         for (
             domain,
@@ -242,11 +226,15 @@ impl FederationTracker {
                 .failed_https
                 .store(row.failed_https, Ordering::Relaxed);
             entry.failed_smtp.store(row.failed_smtp, Ordering::Relaxed);
-            entry.success_http.store(row.success_http, Ordering::Relaxed);
+            entry
+                .success_http
+                .store(row.success_http, Ordering::Relaxed);
             entry
                 .success_https
                 .store(row.success_https, Ordering::Relaxed);
-            entry.success_smtp.store(row.success_smtp, Ordering::Relaxed);
+            entry
+                .success_smtp
+                .store(row.success_smtp, Ordering::Relaxed);
             entry
                 .inbound_deliveries
                 .store(row.inbound_deliveries, Ordering::Relaxed);

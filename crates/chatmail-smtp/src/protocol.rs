@@ -18,9 +18,9 @@
 //! SMTP DATA validation helpers (Madmail `submission.go` / TDD `02-smtp-server.md`).
 
 use chatmail_db::federation_policy_label;
+use chatmail_db::DbPool;
 use chatmail_state::policy::{FederationPolicyCache, PolicyMode};
 use chatmail_types::{address_domain, address_is_local, ChatmailError, Result};
-use chatmail_db::DbPool;
 
 /// Extract a message header value (headers section only).
 pub fn header_value(raw: &[u8], name: &str) -> Option<String> {
@@ -66,9 +66,8 @@ pub fn envelope_domain(addr: &str) -> Option<String> {
 
 /// Submission checks before PGP gate (TDD: From required, must match MAIL FROM).
 pub fn validate_submission_headers(raw: &[u8], mail_from: &str) -> Result<()> {
-    let from_hdr = header_value(raw, "From").ok_or_else(|| {
-        ChatmailError::protocol("Message does not contain a From header field")
-    })?;
+    let from_hdr = header_value(raw, "From")
+        .ok_or_else(|| ChatmailError::protocol("Message does not contain a From header field"))?;
     let from_addr = parse_mailbox_addr(&from_hdr);
     if !from_addr.eq_ignore_ascii_case(mail_from) {
         return Err(ChatmailError::protocol(
@@ -125,10 +124,7 @@ mod tests {
 
     #[test]
     fn parses_from_angle_addr() {
-        assert_eq!(
-            parse_mailbox_addr("Alice <bob@test.org>"),
-            "bob@test.org"
-        );
+        assert_eq!(parse_mailbox_addr("Alice <bob@test.org>"), "bob@test.org");
     }
 
     #[test]

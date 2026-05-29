@@ -115,11 +115,7 @@ pub async fn create_user(args: &Args, _json_only: bool) -> Result<()> {
 }
 
 fn registration_domain(ctx: &CtlContext) -> String {
-    let host = ctx
-        .config
-        .hostname
-        .as_deref()
-        .unwrap_or("127.0.0.1");
+    let host = ctx.config.hostname.as_deref().unwrap_or("127.0.0.1");
     ctx.config.effective_registration_domain(Some(host))
 }
 
@@ -135,25 +131,16 @@ fn ensure_email(raw: &str, domain: &str) -> Result<String> {
     }
 }
 
-async fn accounts_status(
-    ctx: &CtlContext,
-    pool: &DbPool,
-    mailbox: &MailboxStore,
-) -> Result<()> {
+async fn accounts_status(ctx: &CtlContext, pool: &DbPool, mailbox: &MailboxStore) -> Result<()> {
     let users = passwords::list_users(pool).await?;
     let login_count = users
         .iter()
         .filter(|u| !is_internal_settings_key(u))
         .count();
 
-    let reg_open =
-        get_bool_setting(pool, settings_keys::REGISTRATION_OPEN, false).await?;
-    let token_required = get_bool_setting(
-        pool,
-        settings_keys::REGISTRATION_TOKEN_REQUIRED,
-        false,
-    )
-    .await?;
+    let reg_open = get_bool_setting(pool, settings_keys::REGISTRATION_OPEN, false).await?;
+    let token_required =
+        get_bool_setting(pool, settings_keys::REGISTRATION_TOKEN_REQUIRED, false).await?;
     let jit = get_bool_setting(pool, settings_keys::JIT_REGISTRATION_ENABLED, true).await?;
 
     let blocked = blocklist::list_blocked_users(pool).await?.len();
@@ -168,10 +155,7 @@ async fn accounts_status(
     };
 
     println!("Login accounts: {login_count}");
-    println!(
-        "Registration: {}",
-        if reg_open { "open" } else { "closed" }
-    );
+    println!("Registration: {}", if reg_open { "open" } else { "closed" });
     println!(
         "Registration token required: {}",
         if token_required { "yes" } else { "no" }
@@ -218,11 +202,7 @@ async fn accounts_info(
     println!("Username: {username}");
     println!(
         "Credentials: {}",
-        if hash.is_some() {
-            "present"
-        } else {
-            "missing"
-        }
+        if hash.is_some() { "present" } else { "missing" }
     );
     if blocked {
         println!(
@@ -375,9 +355,8 @@ async fn accounts_import(
     file: &Path,
 ) -> Result<()> {
     let raw = fs::read_to_string(file)?;
-    let users: Vec<ExportUser> = serde_json::from_str(&raw).map_err(|e| {
-        ChatmailError::config(format!("invalid import JSON: {e}"))
-    })?;
+    let users: Vec<ExportUser> = serde_json::from_str(&raw)
+        .map_err(|e| ChatmailError::config(format!("invalid import JSON: {e}")))?;
 
     let mut imported = 0i32;
     let mut skipped = 0i32;
@@ -475,8 +454,17 @@ fn random_alnum(len: usize) -> Result<String> {
     const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let mut b = vec![0u8; len];
     fill(&mut b).map_err(|e| ChatmailError::config(format!("random: {e}")))?;
-    Ok(b
-        .iter()
+    Ok(b.iter()
+        .map(|x| CHARSET[(*x as usize) % CHARSET.len()] as char)
+        .collect())
+}
+
+fn random_password(len: usize) -> Result<String> {
+    const CHARSET: &[u8] =
+        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+    let mut b = vec![0u8; len];
+    fill(&mut b).map_err(|e| ChatmailError::config(format!("random: {e}")))?;
+    Ok(b.iter()
         .map(|x| CHARSET[(*x as usize) % CHARSET.len()] as char)
         .collect())
 }
@@ -531,14 +519,9 @@ mod tests {
             .unwrap();
         blocklist::unblock_user(&pool, email).await.unwrap();
 
-        accounts_import(
-            &pool,
-            &mailbox,
-            "example.org",
-            export_path.as_path(),
-        )
-        .await
-        .unwrap();
+        accounts_import(&pool, &mailbox, "example.org", export_path.as_path())
+            .await
+            .unwrap();
         assert!(passwords::user_exists(&pool, email).await.unwrap());
     }
 
@@ -557,16 +540,14 @@ mod tests {
         )
         .unwrap();
 
-        accounts_import(
-            &pool,
-            &mailbox,
-            "example.org",
-            import_path.as_path(),
-        )
-        .await
-        .unwrap();
+        accounts_import(&pool, &mailbox, "example.org", import_path.as_path())
+            .await
+            .unwrap();
 
-        let stored = passwords::get_user_hash(&pool, email).await.unwrap().unwrap();
+        let stored = passwords::get_user_hash(&pool, email)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(stored, hash);
         assert!(verify_password("testpass", &stored).unwrap());
     }
@@ -596,15 +577,4 @@ mod tests {
         .await
         .unwrap();
     }
-}
-
-fn random_password(len: usize) -> Result<String> {
-    const CHARSET: &[u8] =
-        b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
-    let mut b = vec![0u8; len];
-    fill(&mut b).map_err(|e| ChatmailError::config(format!("random: {e}")))?;
-    Ok(b
-        .iter()
-        .map(|x| CHARSET[(*x as usize) % CHARSET.len()] as char)
-        .collect())
 }

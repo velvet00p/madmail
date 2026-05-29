@@ -20,14 +20,14 @@ use std::sync::Arc;
 use base64::Engine;
 use chatmail_auth::{normalize_username, AuthContext};
 use chatmail_config::CredentialPolicy;
+use chatmail_db::federation_policy_label;
+use chatmail_db::DbPool;
 use chatmail_delivery::DeliveryContext;
 use chatmail_pgp::{enforce_encryption, EnforceOptions};
-use chatmail_db::federation_policy_label;
-use chatmail_state::PolicyMode;
 use chatmail_state::AppState;
+use chatmail_state::PolicyMode;
 use chatmail_storage::deliver_local_messages;
 use chatmail_types::{ChatmailError, Result};
-use chatmail_db::DbPool;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::data_limit::{parse_smtp_size_parameter, read_smtp_data_limited};
@@ -95,7 +95,11 @@ impl SmtpSession {
             if line.is_empty() {
                 continue;
             }
-            let cmd = line.split_whitespace().next().unwrap_or("").to_ascii_uppercase();
+            let cmd = line
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_ascii_uppercase();
             match cmd.as_str() {
                 "EHLO" | "HELO" => {
                     self.seen_ehlo = true;
@@ -115,7 +119,10 @@ impl SmtpSession {
                         Ok(u) => u,
                         Err(e) => {
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "AUTH", 501, "5.5.1",
+                                self.cfg.module,
+                                "AUTH",
+                                501,
+                                "5.5.1",
                             );
                             return Err(e);
                         }
@@ -129,25 +136,37 @@ impl SmtpSession {
                     };
                     if let Err(e) = chatmail_auth::authenticate(&auth, &user.0, &user.1).await {
                         chatmail_metrics::record_smtp_failed_login(self.cfg.module);
-                        writer.write_all(b"535 5.7.8 Invalid credentials\r\n").await?;
+                        writer
+                            .write_all(b"535 5.7.8 Invalid credentials\r\n")
+                            .await?;
                         tracing::debug!(error = %e, "SMTP AUTH failed");
                         continue;
                     }
                     self.authenticated_user = Some(normalize_username(&user.0)?);
-                    writer.write_all(b"235 2.7.0 Authentication successful\r\n").await?;
+                    writer
+                        .write_all(b"235 2.7.0 Authentication successful\r\n")
+                        .await?;
                 }
                 "MAIL" => {
                     if !self.seen_ehlo {
                         writer.write_all(b"503 5.5.1 EHLO first\r\n").await?;
                         chatmail_metrics::record_smtp_failed_command(
-                            self.cfg.module, "MAIL", 503, "5.5.1",
+                            self.cfg.module,
+                            "MAIL",
+                            503,
+                            "5.5.1",
                         );
                         continue;
                     }
                     if self.cfg.require_auth && self.authenticated_user.is_none() {
-                        writer.write_all(b"530 5.7.0 Authentication required\r\n").await?;
+                        writer
+                            .write_all(b"530 5.7.0 Authentication required\r\n")
+                            .await?;
                         chatmail_metrics::record_smtp_failed_command(
-                            self.cfg.module, "MAIL", 530, "5.7.0",
+                            self.cfg.module,
+                            "MAIL",
+                            530,
+                            "5.7.0",
                         );
                         continue;
                     }
@@ -156,7 +175,10 @@ impl SmtpSession {
                         Err(e) => {
                             writer.write_all(b"501 5.5.4 Bad address\r\n").await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "MAIL", 501, "5.5.4",
+                                self.cfg.module,
+                                "MAIL",
+                                501,
+                                "5.5.4",
                             );
                             return Err(e);
                         }
@@ -166,7 +188,10 @@ impl SmtpSession {
                         Err(_) => {
                             writer.write_all(b"501 5.5.4 Bad SIZE\r\n").await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "MAIL", 501, "5.5.4",
+                                self.cfg.module,
+                                "MAIL",
+                                501,
+                                "5.5.4",
                             );
                             self.mail_from.clear();
                             continue;
@@ -176,15 +201,15 @@ impl SmtpSession {
                         if declared > self.ctx.message_size.effective() {
                             writer
                                 .write_all(
-                                    format!(
-                                        "{}\r\n",
-                                        chatmail_types::MESSAGE_FILE_TOO_BIG
-                                    )
-                                    .as_bytes(),
+                                    format!("{}\r\n", chatmail_types::MESSAGE_FILE_TOO_BIG)
+                                        .as_bytes(),
                                 )
                                 .await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "MAIL", 552, "5.3.4",
+                                self.cfg.module,
+                                "MAIL",
+                                552,
+                                "5.3.4",
                             );
                             self.mail_from.clear();
                             continue;
@@ -203,7 +228,10 @@ impl SmtpSession {
                         {
                             writer.write_all(b"554 5.7.1 Policy Rejection\r\n").await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "MAIL", 554, "5.7.1",
+                                self.cfg.module,
+                                "MAIL",
+                                554,
+                                "5.7.1",
                             );
                             self.mail_from.clear();
                             continue;
@@ -216,7 +244,10 @@ impl SmtpSession {
                     if self.mail_from.is_empty() {
                         writer.write_all(b"503 5.5.1 MAIL first\r\n").await?;
                         chatmail_metrics::record_smtp_failed_command(
-                            self.cfg.module, "RCPT", 503, "5.5.1",
+                            self.cfg.module,
+                            "RCPT",
+                            503,
+                            "5.5.1",
                         );
                         continue;
                     }
@@ -226,7 +257,10 @@ impl SmtpSession {
                             Err(e) => {
                                 writer.write_all(b"501 5.5.4 Bad address\r\n").await?;
                                 chatmail_metrics::record_smtp_failed_command(
-                                    self.cfg.module, "RCPT", 501, "5.5.4",
+                                    self.cfg.module,
+                                    "RCPT",
+                                    501,
+                                    "5.5.4",
                                 );
                                 return Err(e);
                             }
@@ -234,7 +268,10 @@ impl SmtpSession {
                         Err(e) => {
                             writer.write_all(b"501 5.5.4 Bad address\r\n").await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "RCPT", 501, "5.5.4",
+                                self.cfg.module,
+                                "RCPT",
+                                501,
+                                "5.5.4",
                             );
                             return Err(e);
                         }
@@ -250,7 +287,10 @@ impl SmtpSession {
                     {
                         writer.write_all(b"550 5.7.1 Policy Rejection\r\n").await?;
                         chatmail_metrics::record_smtp_failed_command(
-                            self.cfg.module, "RCPT", 550, "5.7.1",
+                            self.cfg.module,
+                            "RCPT",
+                            550,
+                            "5.7.1",
                         );
                         continue;
                     }
@@ -261,7 +301,10 @@ impl SmtpSession {
                     if self.rcpt_to.is_empty() {
                         writer.write_all(b"503 5.5.1 RCPT first\r\n").await?;
                         chatmail_metrics::record_smtp_failed_command(
-                            self.cfg.module, "DATA", 503, "5.5.1",
+                            self.cfg.module,
+                            "DATA",
+                            503,
+                            "5.5.1",
                         );
                         continue;
                     }
@@ -272,15 +315,15 @@ impl SmtpSession {
                         Err(ChatmailError::MessageTooLarge) => {
                             writer
                                 .write_all(
-                                    format!(
-                                        "{}\r\n",
-                                        chatmail_types::MESSAGE_FILE_TOO_BIG
-                                    )
-                                    .as_bytes(),
+                                    format!("{}\r\n", chatmail_types::MESSAGE_FILE_TOO_BIG)
+                                        .as_bytes(),
                                 )
                                 .await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "DATA", 552, "5.3.4",
+                                self.cfg.module,
+                                "DATA",
+                                552,
+                                "5.3.4",
                             );
                             self.mail_from.clear();
                             self.rcpt_to.clear();
@@ -296,33 +339,42 @@ impl SmtpSession {
                         Err(ChatmailError::EncryptionNeeded(_)) => {
                             writer.write_all(b"523 5.7.1 Encryption Needed\r\n").await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "DATA", 523, "5.7.1",
+                                self.cfg.module,
+                                "DATA",
+                                523,
+                                "5.7.1",
                             );
                         }
                         Err(ChatmailError::MessageTooLarge) => {
                             writer
                                 .write_all(
-                                    format!(
-                                        "{}\r\n",
-                                        chatmail_types::MESSAGE_FILE_TOO_BIG
-                                    )
-                                    .as_bytes(),
+                                    format!("{}\r\n", chatmail_types::MESSAGE_FILE_TOO_BIG)
+                                        .as_bytes(),
                                 )
                                 .await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "DATA", 552, "5.3.4",
+                                self.cfg.module,
+                                "DATA",
+                                552,
+                                "5.3.4",
                             );
                         }
                         Err(ChatmailError::QuotaExceeded { .. }) => {
                             writer.write_all(b"552 5.2.2 Quota exceeded\r\n").await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "DATA", 552, "5.2.2",
+                                self.cfg.module,
+                                "DATA",
+                                552,
+                                "5.2.2",
                             );
                         }
                         Err(ChatmailError::FederationRejected(_)) => {
                             writer.write_all(b"550 5.7.1 Policy Rejection\r\n").await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "DATA", 550, "5.7.1",
+                                self.cfg.module,
+                                "DATA",
+                                550,
+                                "5.7.1",
                             );
                         }
                         Err(ChatmailError::Protocol(_)) => {
@@ -332,13 +384,19 @@ impl SmtpSession {
                                 )
                                 .await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "DATA", 554, "5.6.0",
+                                self.cfg.module,
+                                "DATA",
+                                554,
+                                "5.6.0",
                             );
                         }
                         Err(_) => {
                             writer.write_all(b"451 4.0.0 Temporary failure\r\n").await?;
                             chatmail_metrics::record_smtp_failed_command(
-                                self.cfg.module, "DATA", 451, "4.0.0",
+                                self.cfg.module,
+                                "DATA",
+                                451,
+                                "4.0.0",
                             );
                         }
                     }
@@ -358,7 +416,11 @@ impl SmtpSession {
                     writer.write_all(b"250 2.0.0 OK\r\n").await?;
                 }
                 "NOOP" => writer.write_all(b"250 2.0.0 OK\r\n").await?,
-                _ => writer.write_all(b"502 5.5.1 Command not implemented\r\n").await?,
+                _ => {
+                    writer
+                        .write_all(b"502 5.5.1 Command not implemented\r\n")
+                        .await?
+                }
             }
         }
         Ok(())
@@ -415,12 +477,7 @@ impl SmtpSession {
         }
 
         if !local_deliveries.is_empty() {
-            deliver_local_messages(
-                &self.ctx.mailbox_store,
-                &local_deliveries,
-                data,
-            )
-            .await?;
+            deliver_local_messages(&self.ctx.mailbox_store, &local_deliveries, data).await?;
             for (rcpt, msg_id) in &local_deliveries {
                 self.ctx.quota.record_write(rcpt, data.len() as u64);
                 self.ctx.events.notify_new_message(rcpt, msg_id);
@@ -444,7 +501,9 @@ impl SmtpSession {
 
 fn parse_path_addr(line: &str, prefix: &str) -> Result<String> {
     let upper = line.to_ascii_uppercase();
-    let idx = upper.find(prefix).ok_or_else(|| ChatmailError::protocol("bad address"))?;
+    let idx = upper
+        .find(prefix)
+        .ok_or_else(|| ChatmailError::protocol("bad address"))?;
     let rest = line[idx + prefix.len()..].trim();
     let addr = rest.trim_start_matches('<').trim_end_matches('>');
     Ok(addr.to_string())
@@ -461,14 +520,19 @@ fn parse_auth_plain(line: &str) -> Result<(String, String)> {
     let s = String::from_utf8_lossy(&decoded);
     let mut parts = s.split('\0');
     let _authz = parts.next();
-    let user = parts.next().ok_or_else(|| ChatmailError::protocol("no user"))?;
-    let pass = parts.next().ok_or_else(|| ChatmailError::protocol("no pass"))?;
+    let user = parts
+        .next()
+        .ok_or_else(|| ChatmailError::protocol("no user"))?;
+    let pass = parts
+        .next()
+        .ok_or_else(|| ChatmailError::protocol("no pass"))?;
     Ok((user.to_string(), pass.to_string()))
 }
 
 pub const PGP_MIME_BODY: &[u8] = b"From: sender@test\r\nTo: rcpt@test\r\nSubject: e\r\nContent-Type: multipart/encrypted; boundary=\"b\"\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nv\r\n--b--\r\n";
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
     use chatmail_auth::hash_password;
@@ -553,10 +617,7 @@ mod tests {
         transcript
     }
 
-    async fn read_smtp_chunk(
-        stream: &mut TcpStream,
-        buf: &mut [u8; 4096],
-    ) -> String {
+    async fn read_smtp_chunk(stream: &mut TcpStream, buf: &mut [u8; 4096]) -> String {
         tokio::time::timeout(Duration::from_secs(3), async {
             let mut acc = String::new();
             loop {
@@ -720,8 +781,12 @@ mod tests {
         assert!(t.contains("250 2.1.5 OK"), "RCPT should succeed: {t}");
         assert!(t.contains("250 2.0.0 OK"), "DATA should succeed: {t}");
         let paths = ctx.mailbox_store.maildir_for_user("u@test");
-        let n_new = std::fs::read_dir(&paths.new).map(|d| d.count()).unwrap_or(0);
-        let n_cur = std::fs::read_dir(&paths.cur).map(|d| d.count()).unwrap_or(0);
+        let n_new = std::fs::read_dir(&paths.new)
+            .map(|d| d.count())
+            .unwrap_or(0);
+        let n_cur = std::fs::read_dir(&paths.cur)
+            .map(|d| d.count())
+            .unwrap_or(0);
         assert_eq!(n_new + n_cur, 0, "remote dismiss must not store locally");
     }
 
@@ -737,7 +802,9 @@ mod tests {
         let ctx = Arc::new(AppState::new(dir.path()));
         let b64 = base64::engine::general_purpose::STANDARD.encode("\0u@test\0secret");
         let auth = format!("AUTH PLAIN {b64}");
-        let body = std::str::from_utf8(PGP_MIME_BODY).unwrap().replace("sender@test", "u@test");
+        let body = std::str::from_utf8(PGP_MIME_BODY)
+            .unwrap()
+            .replace("sender@test", "u@test");
         let t = smtp_dialog(
             SmtpSessionConfig {
                 hostname: "mx.test".into(),
@@ -764,9 +831,16 @@ mod tests {
         .await;
         assert!(t.contains("250 2.0.0 OK"), "got: {t}");
         let paths = ctx.mailbox_store.maildir_for_user("u@test");
-        let n_new = std::fs::read_dir(&paths.new).map(|d| d.count()).unwrap_or(0);
-        let n_cur = std::fs::read_dir(&paths.cur).map(|d| d.count()).unwrap_or(0);
-        assert!(n_new + n_cur >= 1, "expected maildir message in new/ or cur/");
+        let n_new = std::fs::read_dir(&paths.new)
+            .map(|d| d.count())
+            .unwrap_or(0);
+        let n_cur = std::fs::read_dir(&paths.cur)
+            .map(|d| d.count())
+            .unwrap_or(0);
+        assert!(
+            n_new + n_cur >= 1,
+            "expected maildir message in new/ or cur/"
+        );
     }
 
     #[tokio::test]
@@ -888,10 +962,7 @@ mod tests {
             t.contains(MESSAGE_FILE_TOO_BIG),
             "expected MAIL SIZE rejection, got: {t}"
         );
-        assert!(
-            !t.contains("354"),
-            "should not reach DATA, got: {t}"
-        );
+        assert!(!t.contains("354"), "should not reach DATA, got: {t}");
     }
 
     #[tokio::test]
@@ -924,8 +995,12 @@ mod tests {
         .await;
         assert!(t.contains("250 2.0.0 OK"), "got: {t}");
         let paths = ctx.mailbox_store.maildir_for_user("ghost@test");
-        let n = std::fs::read_dir(&paths.new).map(|d| d.count()).unwrap_or(0)
-            + std::fs::read_dir(&paths.cur).map(|d| d.count()).unwrap_or(0);
+        let n = std::fs::read_dir(&paths.new)
+            .map(|d| d.count())
+            .unwrap_or(0)
+            + std::fs::read_dir(&paths.cur)
+                .map(|d| d.count())
+                .unwrap_or(0);
         assert_eq!(n, 0);
     }
 
@@ -966,8 +1041,12 @@ mod tests {
         .await;
         assert!(t.contains("250 2.0.0 OK"), "got: {t}");
         let paths = ctx.mailbox_store.maildir_for_user("u@test");
-        let n = std::fs::read_dir(&paths.new).map(|d| d.count()).unwrap_or(0)
-            + std::fs::read_dir(&paths.cur).map(|d| d.count()).unwrap_or(0);
+        let n = std::fs::read_dir(&paths.new)
+            .map(|d| d.count())
+            .unwrap_or(0)
+            + std::fs::read_dir(&paths.cur)
+                .map(|d| d.count())
+                .unwrap_or(0);
         assert_eq!(n, 0);
     }
 }

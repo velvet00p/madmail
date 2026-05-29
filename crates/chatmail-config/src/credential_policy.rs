@@ -93,7 +93,6 @@ impl AppConfig {
             password_min_length: password_min,
         }
     }
-
 }
 
 #[cfg(test)]
@@ -114,10 +113,12 @@ mod tests {
 
     #[test]
     fn generated_username_clamped_to_min_max() {
-        let mut cfg = AppConfig::default();
-        cfg.username_length = Some(4);
-        cfg.min_username_length = Some(8);
-        cfg.max_username_length = Some(20);
+        let mut cfg = AppConfig {
+            username_length: Some(4),
+            min_username_length: Some(8),
+            max_username_length: Some(20),
+            ..Default::default()
+        };
         assert_eq!(cfg.credential_policy().generated_username_length(), 8);
         cfg.username_length = Some(30);
         assert_eq!(cfg.credential_policy().generated_username_length(), 20);
@@ -125,9 +126,11 @@ mod tests {
 
     #[test]
     fn password_length_at_least_password_min() {
-        let mut cfg = AppConfig::default();
-        cfg.password_length = Some(6);
-        cfg.password_min_length = Some(10);
+        let cfg = AppConfig {
+            password_length: Some(6),
+            password_min_length: Some(10),
+            ..Default::default()
+        };
         let p = cfg.credential_policy();
         assert_eq!(p.password_length, 10);
         assert_eq!(p.generated_password_length(), 10);
@@ -135,9 +138,11 @@ mod tests {
 
     #[test]
     fn max_username_bumped_when_below_min() {
-        let mut cfg = AppConfig::default();
-        cfg.min_username_length = Some(10);
-        cfg.max_username_length = Some(5);
+        let cfg = AppConfig {
+            min_username_length: Some(10),
+            max_username_length: Some(5),
+            ..Default::default()
+        };
         let p = cfg.credential_policy();
         assert_eq!(p.min_username_length, 10);
         assert_eq!(p.max_username_length, 10);
@@ -146,10 +151,12 @@ mod tests {
 
     #[test]
     fn madmail_example_min_username_three() {
-        let mut cfg = AppConfig::default();
-        cfg.min_username_length = Some(3);
-        cfg.max_username_length = Some(20);
-        cfg.username_length = Some(8);
+        let cfg = AppConfig {
+            min_username_length: Some(3),
+            max_username_length: Some(20),
+            username_length: Some(8),
+            ..Default::default()
+        };
         let p = cfg.credential_policy();
         assert_eq!(p.min_username_length, 3);
         assert_eq!(p.generated_username_length(), 8);

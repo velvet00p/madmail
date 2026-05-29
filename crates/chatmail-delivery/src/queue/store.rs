@@ -150,8 +150,7 @@ impl QueueStore {
     async fn write_meta(&self, meta: &QueueMeta) -> Result<()> {
         let path = self.meta_path(&meta.id);
         let tmp = self.location.join(format!("{}.meta.new", meta.id));
-        let data = serde_json::to_vec(meta)
-            .map_err(|e| ChatmailError::storage(e.to_string()))?;
+        let data = serde_json::to_vec(meta).map_err(|e| ChatmailError::storage(e.to_string()))?;
         let mut f = fs::File::create(&tmp).await?;
         f.write_all(&data).await?;
         f.sync_data().await?;

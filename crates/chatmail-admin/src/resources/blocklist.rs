@@ -45,7 +45,9 @@ fn normalize_account_username(raw: &str) -> Result<String, (u16, String)> {
 pub async fn blocklist(st: &AdminState, method: &str, body: &Value) -> AdminResult {
     match method {
         "GET" => {
-            let rows = blocklist::list_blocked_users(&st.pool).await.map_err(db_err)?;
+            let rows = blocklist::list_blocked_users(&st.pool)
+                .await
+                .map_err(db_err)?;
             let blocked: Vec<_> = rows
                 .into_iter()
                 .map(|(username, reason, blocked_at)| {
@@ -56,8 +58,8 @@ pub async fn blocklist(st: &AdminState, method: &str, body: &Value) -> AdminResu
             Ok((200, Some(json!({ "blocked": blocked, "total": total }))))
         }
         "POST" => {
-            let req: BlockBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: BlockBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if req.username.is_empty() {
                 return Err((400, "username is required".into()));
             }
@@ -73,8 +75,8 @@ pub async fn blocklist(st: &AdminState, method: &str, body: &Value) -> AdminResu
             Ok((200, Some(json!({ "blocked": username }))))
         }
         "DELETE" => {
-            let req: BlockBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: BlockBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if req.username.is_empty() {
                 return Err((400, "username is required".into()));
             }
@@ -85,18 +87,17 @@ pub async fn blocklist(st: &AdminState, method: &str, body: &Value) -> AdminResu
             Ok((200, Some(json!({ "unblocked": username }))))
         }
         "PATCH" => {
-            let req: BlockBulkBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: BlockBulkBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             if req.action != "delete_all" {
                 return Err((
                     400,
-                    format!(
-                        "unknown action: {} (expected: delete_all)",
-                        req.action
-                    ),
+                    format!("unknown action: {} (expected: delete_all)", req.action),
                 ));
             }
-            let rows = blocklist::list_blocked_users(&st.pool).await.map_err(db_err)?;
+            let rows = blocklist::list_blocked_users(&st.pool)
+                .await
+                .map_err(db_err)?;
             let mut unblocked = 0u32;
             let mut errors = Vec::new();
             for (username, _, _) in rows {
@@ -112,6 +113,9 @@ pub async fn blocklist(st: &AdminState, method: &str, body: &Value) -> AdminResu
             }
             Ok((200, Some(resp)))
         }
-        _ => Err((405, format!("method {method} not allowed for /admin/blocklist"))),
+        _ => Err((
+            405,
+            format!("method {method} not allowed for /admin/blocklist"),
+        )),
     }
 }

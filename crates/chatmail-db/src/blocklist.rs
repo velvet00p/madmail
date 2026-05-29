@@ -39,7 +39,11 @@ pub async fn block_user(pool: &DbPool, username: &str, reason: &str) -> Result<(
 }
 
 pub async fn unblock_user(pool: &DbPool, username: &str) -> Result<()> {
-    db_execute!(pool, "DELETE FROM blocked_users WHERE username = ?", username)?;
+    db_execute!(
+        pool,
+        "DELETE FROM blocked_users WHERE username = ?",
+        username
+    )?;
     Ok(())
 }
 
@@ -88,11 +92,16 @@ mod tests {
     #[tokio::test]
     async fn delete_user_full_blocks() {
         let pool = init_memory_db().await.unwrap();
-        passwords::create_user(&pool, "u@x.org", "hash").await.unwrap();
+        passwords::create_user(&pool, "u@x.org", "hash")
+            .await
+            .unwrap();
         passwords::delete_user_full(&pool, "u@x.org", ADMIN_DELETE_REASON)
             .await
             .unwrap();
         assert!(is_blocked(&pool, "u@x.org").await.unwrap());
-        assert!(passwords::get_user_hash(&pool, "u@x.org").await.unwrap().is_none());
+        assert!(passwords::get_user_hash(&pool, "u@x.org")
+            .await
+            .unwrap()
+            .is_none());
     }
 }

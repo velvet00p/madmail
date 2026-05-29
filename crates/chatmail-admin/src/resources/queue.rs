@@ -22,12 +22,12 @@
 
 use std::time::Duration;
 
-use serde::Deserialize;
-use serde_json::{json, Value};
 use chatmail_storage::{
     prune_unread_older, purge_all_mail_blobs, purge_mail_blobs_older, purge_read_messages,
     purge_user_messages,
 };
+use serde::Deserialize;
+use serde_json::{json, Value};
 
 use super::AdminResult;
 use crate::AdminState;
@@ -67,9 +67,7 @@ fn parse_retention(s: &str) -> Result<Duration, String> {
             .map_err(|e| format!("invalid retention: {e}"))?;
         return Ok(Duration::from_secs(n));
     }
-    let n: u64 = s
-        .parse()
-        .map_err(|e| format!("invalid retention: {e}"))?;
+    let n: u64 = s.parse().map_err(|e| format!("invalid retention: {e}"))?;
     Ok(Duration::from_secs(n))
 }
 

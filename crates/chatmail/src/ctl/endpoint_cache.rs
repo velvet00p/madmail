@@ -20,8 +20,7 @@
 use chatmail_config::cli::EndpointCacheCommand;
 use chatmail_config::Args;
 use chatmail_db::{
-    get_endpoint_override, list_endpoint_overrides, remove_endpoint_override,
-    set_endpoint_override,
+    get_endpoint_override, list_endpoint_overrides, remove_endpoint_override, set_endpoint_override,
 };
 use chatmail_types::{ChatmailError, Result};
 

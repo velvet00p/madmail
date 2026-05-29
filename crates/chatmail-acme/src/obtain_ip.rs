@@ -74,9 +74,7 @@ pub fn is_public_ip(ip: &IpAddr) -> bool {
 pub async fn obtain_ip_certificate(opts: &ObtainOptions) -> Result<()> {
     let ip = parse_public_ip(&opts.domain)?;
 
-    if opts.skip_if_valid
-        && !cert_needs_renewal(&opts.cert_path(), IP_CERT_RENEW_WITHIN_DAYS)?
-    {
+    if opts.skip_if_valid && !cert_needs_renewal(&opts.cert_path(), IP_CERT_RENEW_WITHIN_DAYS)? {
         info!(
             cert = %opts.cert_path().display(),
             "existing IP certificate still valid; skipping issuance"
@@ -108,8 +106,7 @@ pub async fn obtain_ip_certificate(opts: &ObtainOptions) -> Result<()> {
     let account = load_or_create_le_account(opts, &directory_url).await?;
 
     let identifiers = [Identifier::Ip(ip)];
-    let new_order =
-        NewOrder::new(&identifiers).profile(LETS_ENCRYPT_SHORTLIVED_PROFILE);
+    let new_order = NewOrder::new(&identifiers).profile(LETS_ENCRYPT_SHORTLIVED_PROFILE);
 
     println!("Requesting short-lived certificate for {ip} from Let's Encrypt…");
     let mut order = account
@@ -162,10 +159,7 @@ pub async fn obtain_ip_certificate(opts: &ObtainOptions) -> Result<()> {
         key_pem.as_bytes(),
     )?;
 
-    http_handle
-        .stop()
-        .await
-        .map_err(ChatmailError::config)?;
+    http_handle.stop().await.map_err(ChatmailError::config)?;
 
     println!(
         "✓ Short-lived IP certificate written:\n  {}\n  {}",
@@ -175,10 +169,7 @@ pub async fn obtain_ip_certificate(opts: &ObtainOptions) -> Result<()> {
     Ok(())
 }
 
-async fn load_or_create_le_account(
-    opts: &ObtainOptions,
-    directory_url: &str,
-) -> Result<Account> {
+async fn load_or_create_le_account(opts: &ObtainOptions, directory_url: &str) -> Result<Account> {
     let cred_path = opts.le_account_path();
     if cred_path.is_file() {
         let text = std::fs::read_to_string(&cred_path)
@@ -202,11 +193,7 @@ async fn load_or_create_le_account(
 
     let (account, credentials) = Account::builder()
         .map_err(map_instant_acme)?
-        .create(
-            &new_account,
-            directory_url.to_owned(),
-            None,
-        )
+        .create(&new_account, directory_url.to_owned(), None)
         .await
         .map_err(map_instant_acme)?;
 

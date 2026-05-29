@@ -40,10 +40,8 @@ pub fn build_admin_url(config: &AppConfig, settings: &HashMap<String, String>) -
         .cloned()
         .unwrap_or_else(|| "443".into());
 
-    let http_port =
-        listen_port(config.http_listen.as_deref()).unwrap_or_else(|| "80".into());
-    let https_port =
-        listen_port(config.http_tls_listen.as_deref()).unwrap_or(https_port);
+    let http_port = listen_port(config.http_listen.as_deref()).unwrap_or_else(|| "80".into());
+    let https_port = listen_port(config.http_tls_listen.as_deref()).unwrap_or(https_port);
 
     let admin_path = settings
         .get(ADMIN_PATH)
@@ -81,6 +79,7 @@ fn listen_port(addr: Option<&str>) -> Option<String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
 

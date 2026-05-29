@@ -79,9 +79,7 @@ pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
         }
         TasksCommand::Run { task, retention } => {
             let id = TaskId::parse(task).ok_or_else(|| {
-                ChatmailError::config(format!(
-                    "unknown task {task:?}; use `chatmail tasks list`"
-                ))
+                ChatmailError::config(format!("unknown task {task:?}; use `chatmail tasks list`"))
             })?;
             let retention_override = match retention {
                 Some(s) => Some(parse_retention_arg(s)?),

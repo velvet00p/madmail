@@ -17,10 +17,10 @@
 
 //! In-process maintenance scheduler (started with `chatmail run`).
 
-use std::path::Path;
 use chatmail_config::AppConfig;
 use chatmail_db::DbPool;
 use chatmail_storage::MailboxStore;
+use std::path::Path;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error};

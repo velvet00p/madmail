@@ -63,12 +63,15 @@ pub fn load_config(path: &Path) -> Result<AppConfig> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     match ext {
         "toml" => Ok(toml_to_app_config(&content)?),
-        "conf" => maddy::parse_maddy_config(&content).map_err(|e| ChatmailError::config(e.to_string())),
+        "conf" => {
+            maddy::parse_maddy_config(&content).map_err(|e| ChatmailError::config(e.to_string()))
+        }
         _ => {
             if content.trim_start().starts_with('{') {
                 Ok(toml_to_app_config(&content)?)
             } else {
-                maddy::parse_maddy_config(&content).map_err(|e| ChatmailError::config(e.to_string()))
+                maddy::parse_maddy_config(&content)
+                    .map_err(|e| ChatmailError::config(e.to_string()))
             }
         }
     }
@@ -173,11 +176,7 @@ tls_mode = "autocert"
     fn p1_ut02_load_config_from_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("chatmail.toml");
-        std::fs::write(
-            &path,
-            r#"primary_domain = "test.example.org""#,
-        )
-        .unwrap();
+        std::fs::write(&path, r#"primary_domain = "test.example.org""#).unwrap();
         let cfg = load_config(&path).unwrap();
         assert_eq!(cfg.primary_domain.as_deref(), Some("test.example.org"));
     }

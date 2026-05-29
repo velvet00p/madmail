@@ -25,9 +25,7 @@ use chatmail_types::Result;
 use crate::{get_setting, settings_keys, DbPool};
 
 fn pick(map: &HashMap<String, String>, key: &str) -> Option<String> {
-    map.get(key)
-        .filter(|s| !s.trim().is_empty())
-        .cloned()
+    map.get(key).filter(|s| !s.trim().is_empty()).cloned()
 }
 
 /// Build [`DbMailPorts`] from a settings map (e.g. [`get_settings_many`](crate::get_settings_many)).

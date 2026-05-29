@@ -18,9 +18,7 @@
 use std::collections::HashSet;
 use std::sync::RwLock;
 
-use chatmail_db::{
-    db_execute, db_fetch_all, normalize_federation_domain, pg_sql, DbPool,
-};
+use chatmail_db::{db_execute, db_fetch_all, normalize_federation_domain, pg_sql, DbPool};
 use chatmail_types::{address_domain, address_is_local, domain_forms, Result};
 
 #[derive(Debug)]
@@ -36,8 +34,11 @@ impl FederationSilentDismissCache {
     }
 
     pub async fn hydrate(&self, pool: &DbPool) -> Result<()> {
-        let rows: Vec<(String,)> =
-            db_fetch_all!(pool, (String,), "SELECT domain FROM federation_silent_dismiss")?;
+        let rows: Vec<(String,)> = db_fetch_all!(
+            pool,
+            (String,),
+            "SELECT domain FROM federation_silent_dismiss"
+        )?;
         let mut set = self.domains.write().expect("silent dismiss lock");
         set.clear();
         for (domain,) in rows {

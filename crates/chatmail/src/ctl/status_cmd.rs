@@ -23,7 +23,7 @@ use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 use chatmail_config::{
-    load_config, port_from_listen, read_maddy_ast, Args, AppConfig, ConfigAst, Node,
+    load_config, port_from_listen, read_maddy_ast, AppConfig, Args, ConfigAst, Node,
 };
 use chatmail_db::passwords;
 use chatmail_types::Result;
@@ -115,7 +115,10 @@ pub async fn status(args: &Args, details: bool) -> Result<()> {
     if details && !port_results.is_empty() {
         println!();
         println!("Per-port breakdown:");
-        println!("{:<6}\t{:<5}\t{:<18}\t{:<12}\t{}", "PORT", "PROTO", "TYPE", "CONNECTIONS", "UNIQUE IPs");
+        println!(
+            "{:<6}\t{:<5}\t{:<18}\t{:<12}\tUNIQUE IPs",
+            "PORT", "PROTO", "TYPE", "CONNECTIONS"
+        );
         for (info, conns) in &port_results {
             let mut ips = HashSet::new();
             for c in conns {
@@ -210,7 +213,13 @@ fn parse_service_ports(
         }
     }
 
-    push_listen_port(&mut scan.ports, cfg.imap_listen.as_deref(), "IMAP", "IMAP", "tcp");
+    push_listen_port(
+        &mut scan.ports,
+        cfg.imap_listen.as_deref(),
+        "IMAP",
+        "IMAP",
+        "tcp",
+    );
     push_listen_port(
         &mut scan.ports,
         cfg.imap_tls_listen.as_deref(),
@@ -262,11 +271,7 @@ fn walk_node(node: &Node, ports: &mut Vec<ServicePort>) {
     match node.name.as_str() {
         "imap" => {
             for (scheme, port) in endpoint_scheme_ports(&node.args) {
-                let label = if scheme == "tls" {
-                    "IMAP TLS"
-                } else {
-                    "IMAP"
-                };
+                let label = if scheme == "tls" { "IMAP TLS" } else { "IMAP" };
                 push_port(ports, &port, label, "IMAP", "tcp");
             }
         }
@@ -414,7 +419,9 @@ fn turn_relay_count(known_turn_ports: &HashSet<String>) -> i32 {
     let text = String::from_utf8_lossy(&output.stdout);
     let mut count = 0i32;
     for line in text.lines() {
-        if !line.contains("\"chatmail\"") && !line.contains("\"maddy\"") && !line.contains("\"madmail\"")
+        if !line.contains("\"chatmail\"")
+            && !line.contains("\"maddy\"")
+            && !line.contains("\"madmail\"")
         {
             continue;
         }
@@ -469,7 +476,7 @@ fn extract_ip(addr: &str) -> String {
 
 fn read_server_tracker(runtime_dir: &str) -> Result<ServerTrackerStatus> {
     let path = Path::new(runtime_dir).join(STATUS_FILE);
-    let data = std::fs::read_to_string(path).map_err(|e| chatmail_types::ChatmailError::Io(e))?;
+    let data = std::fs::read_to_string(path).map_err(chatmail_types::ChatmailError::Io)?;
     serde_json::from_str(&data).map_err(|e| chatmail_types::ChatmailError::config(e.to_string()))
 }
 

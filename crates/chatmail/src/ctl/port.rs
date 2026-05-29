@@ -128,7 +128,10 @@ fn port_status_all(settings: &HashMap<String, String>) -> Result<()> {
     for spec in PORT_SPECS {
         let mode = service_mode(settings, spec);
         let port = service_port(settings, spec);
-        println!("  {:<24} port={port} mode={mode}", format!("{}:", spec.display));
+        println!(
+            "  {:<24} port={port} mode={mode}",
+            format!("{}:", spec.display)
+        );
     }
     println!();
     println!("  Note: restart service after changes.");
@@ -152,9 +155,9 @@ async fn port_service(
             Ok(())
         }
         PortServiceCommand::Set { port } => {
-            let p: u16 = port
-                .parse()
-                .map_err(|_| ChatmailError::config(format!("invalid port {port:?} (must be 1-65535)")))?;
+            let p: u16 = port.parse().map_err(|_| {
+                ChatmailError::config(format!("invalid port {port:?} (must be 1-65535)"))
+            })?;
             if !(1..=65535).contains(&p) {
                 return Err(ChatmailError::config(format!(
                     "invalid port {port:?} (must be 1-65535)"
@@ -180,11 +183,7 @@ async fn port_service(
     }
 }
 
-async fn set_mode(
-    pool: &chatmail_db::DbPool,
-    spec: &PortSpec,
-    mode: &str,
-) -> Result<()> {
+async fn set_mode(pool: &chatmail_db::DbPool, spec: &PortSpec, mode: &str) -> Result<()> {
     if spec.local_keys.is_empty() {
         return Err(ChatmailError::config(format!(
             "{} does not support local/public mode",

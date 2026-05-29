@@ -24,8 +24,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::admin_url::build_admin_url;
-use crate::admin::resolve_admin_token;
 use super::context::CtlContext;
+use crate::admin::resolve_admin_token;
 
 #[derive(Debug, Deserialize)]
 struct AdminEnvelope {
@@ -44,7 +44,11 @@ pub async fn reload(args: &Args, url_override: Option<&str>, insecure: bool) -> 
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.trim_end_matches('/').to_string())
-        .unwrap_or_else(|| build_admin_url(&ctx.config, &settings).trim_end_matches('/').to_string());
+        .unwrap_or_else(|| {
+            build_admin_url(&ctx.config, &settings)
+                .trim_end_matches('/')
+                .to_string()
+        });
 
     let envelope = json!({
         "method": "POST",

@@ -40,7 +40,10 @@ fn main() {
     }
 
     if embed_dst.join("index.html").is_file() {
-        println!("cargo:rerun-if-changed={}", embed_dst.join("index.html").display());
+        println!(
+            "cargo:rerun-if-changed={}",
+            embed_dst.join("index.html").display()
+        );
         return;
     }
 

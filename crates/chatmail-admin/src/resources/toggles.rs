@@ -44,21 +44,8 @@ pub async fn jit(st: &AdminState, method: &str, body: &Value) -> AdminResult {
     .await
 }
 
-pub async fn service_bool(
-    st: &AdminState,
-    method: &str,
-    body: &Value,
-    key: &str,
-) -> AdminResult {
-    let mut res = toggle_setting(
-        &st.pool,
-        method,
-        body,
-        key,
-        "enabled",
-        "disabled",
-    )
-    .await?;
+pub async fn service_bool(st: &AdminState, method: &str, body: &Value, key: &str) -> AdminResult {
+    let mut res = toggle_setting(&st.pool, method, body, key, "enabled", "disabled").await?;
     if method == "POST" && key == chatmail_db::settings_keys::ADMIN_WEB_ENABLED {
         if let Some(body) = &res.1 {
             if body.get("status").and_then(|v| v.as_str()) == Some("enabled") {
@@ -147,7 +134,10 @@ async fn toggle_setting(
     match method {
         "GET" => {
             let on = get_bool_setting(pool, key, false).await.map_err(db_err)?;
-            Ok((200, Some(json!({ "status": if on { on_label } else { off_label } }))))
+            Ok((
+                200,
+                Some(json!({ "status": if on { on_label } else { off_label } })),
+            ))
         }
         "POST" => {
             let req: ActionBody = serde_json::from_value(body.clone())
@@ -170,4 +160,3 @@ async fn toggle_setting(
         _ => Err((405, format!("method {method} not allowed"))),
     }
 }
-

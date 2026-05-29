@@ -127,8 +127,11 @@ async fn smtp_submission_increments_openmetrics_counters() {
     tokio::time::sleep(Duration::from_millis(80)).await;
 
     let label = r#"module="submission""#;
-    let before_started =
-        sample(&scrape_metrics(&metrics_url).await, "maddy_smtp_started_transactions", label);
+    let before_started = sample(
+        &scrape_metrics(&metrics_url).await,
+        "maddy_smtp_started_transactions",
+        label,
+    );
     let before_completed = sample(
         &scrape_metrics(&metrics_url).await,
         "maddy_smtp_smtp_completed_transactions",
@@ -183,7 +186,7 @@ async fn smtp_submission_increments_openmetrics_counters() {
     );
 
     cancel.cancel();
-    let _ = tokio::time::timeout(Duration::from_secs(3), metrics_task)
+    tokio::time::timeout(Duration::from_secs(3), metrics_task)
         .await
         .expect("metrics shutdown")
         .expect("metrics task");

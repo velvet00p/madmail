@@ -70,8 +70,8 @@ pub async fn quota(st: &AdminState, method: &str, body: &Value) -> AdminResult {
             ))
         }
         "PUT" => {
-            let req: QuotaSet = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: QuotaSet =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             let user = if req.username.is_empty() {
                 settings_keys::GLOBAL_QUOTA_USERNAME.to_string()
             } else {
@@ -84,14 +84,8 @@ pub async fn quota(st: &AdminState, method: &str, body: &Value) -> AdminResult {
                  VALUES (?, ?, ?, 0, 0)
                  ON CONFLICT(username) DO UPDATE SET max_storage = excluded.max_storage"
             );
-            chatmail_db::db_execute!(
-                &st.pool,
-                &sql,
-                user.as_str(),
-                req.max_bytes,
-                now
-            )
-            .map_err(db_err)?;
+            chatmail_db::db_execute!(&st.pool, &sql, user.as_str(), req.max_bytes, now)
+                .map_err(db_err)?;
             let max = req.max_bytes.max(0) as u64;
             st.app.quota.set_max_bytes(&user, max);
             Ok((
@@ -100,12 +94,11 @@ pub async fn quota(st: &AdminState, method: &str, body: &Value) -> AdminResult {
             ))
         }
         "DELETE" => {
-            let req: QuotaGet = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: QuotaGet =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             let qt = quota_table(&st.pool).await.map_err(db_err)?;
             let sql = format!("DELETE FROM {qt} WHERE username = ?");
-            chatmail_db::db_execute!(&st.pool, &sql, req.username.as_str())
-            .map_err(db_err)?;
+            chatmail_db::db_execute!(&st.pool, &sql, req.username.as_str()).map_err(db_err)?;
             st.app.quota.reset_max(&req.username);
             Ok((200, Some(json!({ "reset": req.username }))))
         }

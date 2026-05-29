@@ -56,7 +56,10 @@ pub fn resolve_state_dir(args: &Args, config: &AppConfig) -> PathBuf {
 }
 
 /// Core boot: state dir, DB migrate, admin token.
-pub async fn initialize_state(state_dir: &Path, config: &AppConfig) -> Result<(BootArtifacts, DbPool)> {
+pub async fn initialize_state(
+    state_dir: &Path,
+    config: &AppConfig,
+) -> Result<(BootArtifacts, DbPool)> {
     std::fs::create_dir_all(state_dir)?;
     let database = effective_database_config(state_dir, config);
     let db_path = effective_app_db_path(state_dir, config);

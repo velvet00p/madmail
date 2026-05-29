@@ -80,8 +80,7 @@ pub async fn start_turn_server(
 
     warn_if_turn_listen_unreachable(listen, external);
 
-    let force_relay_test =
-        file_config.turn_test_force_relay || turn_force_relay_test_from_env();
+    let force_relay_test = file_config.turn_test_force_relay || turn_force_relay_test_from_env();
     let opts = TurnSpawnOpts {
         debug: file_config.turn_debug || turn_debug_from_env(),
         test_relay_only: force_relay_test,
@@ -139,10 +138,7 @@ async fn effective_turn_port(pool: &DbPool, file_config: &AppConfig) -> Result<u
     })
 }
 
-async fn effective_turn_secret(
-    pool: &DbPool,
-    file_config: &AppConfig,
-) -> Result<Option<String>> {
+async fn effective_turn_secret(pool: &DbPool, file_config: &AppConfig) -> Result<Option<String>> {
     if let Ok(Some(v)) = get_setting(pool, settings_keys::TURN_SECRET).await {
         if !v.is_empty() {
             return Ok(Some(v));
@@ -245,7 +241,10 @@ mod tests {
             .unwrap();
         let cfg = turn_file_config();
         assert!(!turn_runtime_enabled(&pool, &cfg).await.unwrap());
-        assert!(turn_discovery(&pool, &cfg, "mail.test").await.unwrap().is_none());
+        assert!(turn_discovery(&pool, &cfg, "mail.test")
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]

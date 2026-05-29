@@ -29,6 +29,19 @@ pub use serve::{admin_web_router, AdminWebState};
 /// Default mount path when `admin-web enable` is used and no path is configured.
 pub const DEFAULT_ADMIN_WEB_PATH: &str = "/admin";
 
+fn normalize_prefix(path: &str) -> String {
+    let path = path.trim();
+    if path.is_empty() {
+        return String::new();
+    }
+    let path = path.trim_end_matches('/');
+    if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    }
+}
+
 /// Resolve URL path for the admin-web SPA (`admin_web_path` in config, `__ADMIN_WEB_PATH__` in DB).
 ///
 /// Falls back to [`DEFAULT_ADMIN_WEB_PATH`] when neither source sets a path.
@@ -49,10 +62,7 @@ pub async fn resolve_admin_web_path(file_config: &AppConfig, pool: &DbPool) -> O
 }
 
 /// Persist [`DEFAULT_ADMIN_WEB_PATH`] when enabling and no path is configured yet.
-pub async fn ensure_default_admin_web_path(
-    file_config: &AppConfig,
-    pool: &DbPool,
-) -> Result<()> {
+pub async fn ensure_default_admin_web_path(file_config: &AppConfig, pool: &DbPool) -> Result<()> {
     if file_config.admin_web_path.is_some() {
         return Ok(());
     }
@@ -62,6 +72,19 @@ pub async fn ensure_default_admin_web_path(
         }
     }
     set_setting(pool, ADMIN_WEB_PATH, DEFAULT_ADMIN_WEB_PATH).await
+}
+
+/// Build router for the admin-web SPA (mounted at resolved path, usually `/admin`).
+pub async fn router_if_configured(
+    file_config: &AppConfig,
+    pool: DbPool,
+) -> Result<Option<axum::Router>> {
+    let Some(prefix) = resolve_admin_web_path(file_config, &pool).await else {
+        return Ok(None);
+    };
+    let state = AdminWebState::new(pool, prefix.clone());
+    tracing::info!(path = %prefix, "admin web UI mounted (embedded SPA)");
+    Ok(Some(admin_web_router(state)))
 }
 
 #[cfg(test)]
@@ -85,30 +108,4 @@ mod tests {
         let path = resolve_admin_web_path(&cfg, &pool).await.unwrap();
         assert_eq!(path, "/panel");
     }
-}
-
-fn normalize_prefix(path: &str) -> String {
-    let path = path.trim();
-    if path.is_empty() {
-        return String::new();
-    }
-    let path = path.trim_end_matches('/');
-    if path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!("/{path}")
-    }
-}
-
-/// Build router for the admin-web SPA (mounted at resolved path, usually `/admin`).
-pub async fn router_if_configured(
-    file_config: &AppConfig,
-    pool: DbPool,
-) -> Result<Option<axum::Router>> {
-    let Some(prefix) = resolve_admin_web_path(file_config, &pool).await else {
-        return Ok(None);
-    };
-    let state = AdminWebState::new(pool, prefix.clone());
-    tracing::info!(path = %prefix, "admin web UI mounted (embedded SPA)");
-    Ok(Some(admin_web_router(state)))
 }

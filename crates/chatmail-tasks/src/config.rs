@@ -70,7 +70,9 @@ fn optional_duration(raw: Option<&str>) -> Result<Option<Duration>> {
         return Ok(None);
     }
     parse_duration(s).map(Some).map_err(|_| {
-        ChatmailError::config(format!("invalid duration in config: {s:?} (use e.g. 24h, 7d)"))
+        ChatmailError::config(format!(
+            "invalid duration in config: {s:?} (use e.g. 24h, 7d)"
+        ))
     })
 }
 
@@ -80,8 +82,10 @@ mod tests {
 
     #[test]
     fn zero_retention_disables_job() {
-        let mut cfg = AppConfig::default();
-        cfg.retention = Some("0".into());
+        let cfg = AppConfig {
+            retention: Some("0".into()),
+            ..Default::default()
+        };
         let m = MaintenanceConfig::from_app_config(&cfg).unwrap();
         assert!(m.message_retention.is_none());
     }

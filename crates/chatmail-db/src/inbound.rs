@@ -17,8 +17,8 @@
 
 //! Inbound delivery guards (SMTP :25, `/mxdeliv`, local queue final delivery).
 
-use chatmail_types::Result;
 use crate::DbPool;
+use chatmail_types::Result;
 
 use crate::passwords;
 
@@ -92,10 +92,8 @@ mod tests {
         passwords::create_user(&pool, "u@example.org", "hash")
             .await
             .unwrap();
-        assert!(
-            inbound_local_recipient_allowed(&pool, "u@example.org")
-                .await
-                .unwrap()
-        );
+        assert!(inbound_local_recipient_allowed(&pool, "u@example.org")
+            .await
+            .unwrap());
     }
 }

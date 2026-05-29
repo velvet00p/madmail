@@ -54,11 +54,11 @@ impl Http01Solver {
     pub fn start(&self, address: &SocketAddr) -> hyper::Result<Http01Handle> {
         let (tx, rx) = oneshot::channel();
         let challenges = self.challenges.clone();
-        let server = Server::try_bind(address)?.serve(MakeSvc(challenges)).with_graceful_shutdown(
-            async move {
+        let server = Server::try_bind(address)?
+            .serve(MakeSvc(challenges))
+            .with_graceful_shutdown(async move {
                 let _ = rx.await;
-            },
-        );
+            });
         Ok(Http01Handle {
             tx,
             join: tokio::spawn(server),

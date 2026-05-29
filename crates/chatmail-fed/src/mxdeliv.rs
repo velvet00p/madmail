@@ -22,11 +22,11 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use chatmail_db::federation_policy_label;
+use chatmail_db::DbPool;
 use chatmail_pgp::{enforce_encryption, EnforceOptions};
 use chatmail_state::{AppState, PolicyMode};
 use chatmail_storage::write_blob;
 use chatmail_types::ChatmailError;
-use chatmail_db::DbPool;
 
 use chatmail_db::{inbound_local_recipient_allowed, is_federation_sender_blocked};
 
@@ -78,9 +78,8 @@ async fn handle_mxdeliv(
     body: &[u8],
 ) -> chatmail_types::Result<()> {
     let mail_from = header_str(headers, "x-mail-from").unwrap_or_default();
-    let rcpt = header_str(headers, "x-mail-to").ok_or_else(|| {
-        ChatmailError::protocol("missing X-Mail-To")
-    })?;
+    let rcpt = header_str(headers, "x-mail-to")
+        .ok_or_else(|| ChatmailError::protocol("missing X-Mail-To"))?;
 
     if !recipient_matches_server(&rcpt, &st.local_domains) {
         tracing::debug!(rcpt = %rcpt, "mxdeliv: silently dropped (not local domain)");
@@ -103,11 +102,11 @@ async fn handle_mxdeliv(
         .unwrap_or_default();
 
     let policy_mode = PolicyMode::from_label(&federation_policy_label(&st.pool).await?);
-    if !st.app.federation_policy.allows_sender(
-        &sender_domain,
-        &st.local_domains,
-        policy_mode,
-    ) {
+    if !st
+        .app
+        .federation_policy
+        .allows_sender(&sender_domain, &st.local_domains, policy_mode)
+    {
         return Err(ChatmailError::FederationRejected(sender_domain));
     }
 
@@ -123,7 +122,9 @@ async fn handle_mxdeliv(
     st.app.quota.check_quota(&rcpt, body.len() as u64)?;
 
     // Madmail: inbound HTTP counts on sender domain with empty transport (inbound_deliveries++).
-    st.app.federation_tracker.record_success(&sender_domain, 0, "");
+    st.app
+        .federation_tracker
+        .record_success(&sender_domain, 0, "");
 
     let msg_id = uuid::Uuid::new_v4().to_string();
     write_blob(&st.app.mailbox_store, &rcpt, &msg_id, body).await?;
@@ -183,8 +184,11 @@ mod tests {
         chatmail_db::set_federation_policy_label(&pool, "accept")
             .await
             .unwrap();
-        chatmail_db::db_execute!(pool, "INSERT INTO federation_rules (domain) VALUES ('evil.test')")
-            .unwrap();
+        chatmail_db::db_execute!(
+            pool,
+            "INSERT INTO federation_rules (domain) VALUES ('evil.test')"
+        )
+        .unwrap();
 
         let dir = tempfile::tempdir().unwrap();
         let app = Arc::new(AppState::new(dir.path()));

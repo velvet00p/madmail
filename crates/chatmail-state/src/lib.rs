@@ -27,9 +27,9 @@ pub mod tracker;
 use std::sync::Arc;
 
 use chatmail_config::AppConfig;
+use chatmail_db::DbPool;
 use chatmail_storage::MailboxStore;
 use chatmail_types::Result;
-use chatmail_db::DbPool;
 
 pub use events::{EventBus, NewMessageEvent};
 pub use flusher::{flush_federation_stats, start_flusher, FlusherHandle};
@@ -60,12 +60,11 @@ impl AppState {
         Self::with_default_quota(state_dir, chatmail_config::DEFAULT_QUOTA_BYTES)
     }
 
-    pub fn with_default_quota(state_dir: impl AsRef<std::path::Path>, default_quota_bytes: u64) -> Self {
-        Self::with_quota_and_message_limit(
-            state_dir,
-            default_quota_bytes,
-            &AppConfig::default(),
-        )
+    pub fn with_default_quota(
+        state_dir: impl AsRef<std::path::Path>,
+        default_quota_bytes: u64,
+    ) -> Self {
+        Self::with_quota_and_message_limit(state_dir, default_quota_bytes, &AppConfig::default())
     }
 
     pub fn with_quota_and_message_limit(

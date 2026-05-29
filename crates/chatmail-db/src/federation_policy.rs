@@ -17,8 +17,8 @@
 
 //! Federation policy settings (`__FEDERATION_POLICY__`), Madmail-compatible.
 
-use chatmail_types::Result;
 use crate::DbPool;
+use chatmail_types::Result;
 
 use crate::settings::{get_setting, set_setting};
 use crate::settings_keys::FEDERATION_POLICY;
@@ -57,14 +57,8 @@ mod tests {
 
     #[test]
     fn normalize_strips_ip_brackets() {
-        assert_eq!(
-            normalize_federation_domain("[1.1.1.1]"),
-            "1.1.1.1"
-        );
-        assert_eq!(
-            normalize_federation_domain("Example.ORG"),
-            "example.org"
-        );
+        assert_eq!(normalize_federation_domain("[1.1.1.1]"), "1.1.1.1");
+        assert_eq!(normalize_federation_domain("Example.ORG"), "example.org");
     }
 
     #[tokio::test]
@@ -79,7 +73,10 @@ mod tests {
         let DbPool::Sqlite(p) = &pool else {
             panic!("memory db is sqlite");
         };
-        sqlx::query("DROP TABLE passwords").execute(p).await.unwrap();
+        sqlx::query("DROP TABLE passwords")
+            .execute(p)
+            .await
+            .unwrap();
         sqlx::query("CREATE TABLE passwords (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             .execute(p)
             .await

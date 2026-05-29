@@ -249,7 +249,10 @@ mod tests {
 
         let n = purge_user_messages(&store, "user/name@test").await.unwrap();
         assert_eq!(n, 1);
-        assert!(list_inbox(&store, "user/name@test").await.unwrap().is_empty());
+        assert!(list_inbox(&store, "user/name@test")
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -258,7 +261,9 @@ mod tests {
         let store = MailboxStore::new(tmp.path());
         let paths = store.init_user_dir("u@test").await.unwrap();
         write_blob(&store, "u@test", "new-msg", b"n").await.unwrap();
-        write_blob(&store, "u@test", "old-read", b"r").await.unwrap();
+        write_blob(&store, "u@test", "old-read", b"r")
+            .await
+            .unwrap();
         tokio::fs::rename(paths.new.join("old-read"), paths.cur.join("old-read"))
             .await
             .unwrap();

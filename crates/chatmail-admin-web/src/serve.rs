@@ -89,10 +89,7 @@ pub fn admin_web_router(state: AdminWebState) -> Router {
                 move || async move { Redirect::permanent(&redirect_target) }
             }),
         )
-        .route(
-            &format!("{prefix}/"),
-            axum::routing::any(spa_fallback),
-        )
+        .route(&format!("{prefix}/"), axum::routing::any(spa_fallback))
         .route(
             &format!("{prefix}/{{*filepath}}"),
             axum::routing::any(spa_fallback),
@@ -111,11 +108,7 @@ async fn spa_fallback(Extension(st): Extension<Arc<AdminWebState>>, req: Request
         return StatusCode::NOT_FOUND.into_response();
     }
     if !st.build_available {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Html(UNAVAILABLE_HTML),
-        )
-            .into_response();
+        return (StatusCode::SERVICE_UNAVAILABLE, Html(UNAVAILABLE_HTML)).into_response();
     }
 
     let path = req
@@ -137,7 +130,10 @@ async fn spa_fallback(Extension(st): Extension<Arc<AdminWebState>>, req: Request
 
 fn serve_index(st: &AdminWebState) -> Response {
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
+    headers.insert(
+        header::CONTENT_TYPE,
+        "text/html; charset=utf-8".parse().unwrap(),
+    );
     headers.insert(header::CACHE_CONTROL, "no-cache".parse().unwrap());
     (StatusCode::OK, headers, st.patched_index.as_ref().clone()).into_response()
 }

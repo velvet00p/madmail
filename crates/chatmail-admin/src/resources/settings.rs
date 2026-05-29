@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 use chatmail_config::{format_data_size, parse_duration};
 use chatmail_db::{
     delete_setting, format_retention_days, get_bool_setting, get_setting, set_setting,
-    settings_keys, DEFAULT_RETENTION_DAYS, DbPool,
+    settings_keys, DbPool, DEFAULT_RETENTION_DAYS,
 };
 
 use super::{status_storage::db_err, AdminResult};
@@ -66,13 +66,13 @@ pub async fn all_settings(st: &AdminState, method: &str) -> AdminResult {
         "disabled"
     };
 
-    let federation_enabled =
-        get_bool_setting(pool, settings_keys::FEDERATION_ENABLED, false)
-            .await
-            .map_err(db_err)?;
+    let federation_enabled = get_bool_setting(pool, settings_keys::FEDERATION_ENABLED, false)
+        .await
+        .map_err(db_err)?;
 
-    let federation_policy =
-        chatmail_db::federation_policy_label(pool).await.map_err(db_err)?;
+    let federation_policy = chatmail_db::federation_policy_label(pool)
+        .await
+        .map_err(db_err)?;
 
     let (ss_enabled, ss_ws_enabled, ss_grpc_enabled, ss_port, ss_cipher, ss_pass, shadowsocks_url) =
         super::proxy::shadowsocks_settings_snapshot(st).await?;
@@ -92,9 +92,7 @@ pub async fn all_settings(st: &AdminState, method: &str) -> AdminResult {
     );
     body.insert(
         "message_retention_enabled".into(),
-        json!(
-            get_toggle_disabled_default(pool, settings_keys::MESSAGE_RETENTION_ENABLED).await?
-        ),
+        json!(get_toggle_disabled_default(pool, settings_keys::MESSAGE_RETENTION_ENABLED).await?),
     );
     insert_setting(
         &mut body,
@@ -125,7 +123,11 @@ pub async fn all_settings(st: &AdminState, method: &str) -> AdminResult {
     body.insert("federation_enabled".into(), json!(federation_enabled));
     body.insert("federation_policy".into(), json!(federation_policy));
 
-    insert_setting(&mut body, "smtp_port", setting_value(pool, settings_keys::SMTP_PORT, "").await?);
+    insert_setting(
+        &mut body,
+        "smtp_port",
+        setting_value(pool, settings_keys::SMTP_PORT, "").await?,
+    );
     insert_setting(
         &mut body,
         "submission_port",
@@ -136,15 +138,31 @@ pub async fn all_settings(st: &AdminState, method: &str) -> AdminResult {
         "submission_tls_port",
         setting_value(pool, settings_keys::SUBMISSION_TLS_PORT, "").await?,
     );
-    insert_setting(&mut body, "imap_port", setting_value(pool, settings_keys::IMAP_PORT, "").await?);
+    insert_setting(
+        &mut body,
+        "imap_port",
+        setting_value(pool, settings_keys::IMAP_PORT, "").await?,
+    );
     insert_setting(
         &mut body,
         "imap_tls_port",
         setting_value(pool, settings_keys::IMAP_TLS_PORT, "").await?,
     );
-    insert_setting(&mut body, "turn_port", setting_value(pool, settings_keys::TURN_PORT, "").await?);
-    insert_setting(&mut body, "sasl_port", setting_value(pool, settings_keys::SASL_PORT, "").await?);
-    insert_setting(&mut body, "iroh_port", setting_value(pool, settings_keys::IROH_PORT, "").await?);
+    insert_setting(
+        &mut body,
+        "turn_port",
+        setting_value(pool, settings_keys::TURN_PORT, "").await?,
+    );
+    insert_setting(
+        &mut body,
+        "sasl_port",
+        setting_value(pool, settings_keys::SASL_PORT, "").await?,
+    );
+    insert_setting(
+        &mut body,
+        "iroh_port",
+        setting_value(pool, settings_keys::IROH_PORT, "").await?,
+    );
     insert_setting(
         &mut body,
         "ss_port",
@@ -160,7 +178,11 @@ pub async fn all_settings(st: &AdminState, method: &str) -> AdminResult {
         "ss_grpc_port",
         setting_value(pool, settings_keys::SS_GRPC_PORT, "").await?,
     );
-    insert_setting(&mut body, "http_port", setting_value(pool, settings_keys::HTTP_PORT, "").await?);
+    insert_setting(
+        &mut body,
+        "http_port",
+        setting_value(pool, settings_keys::HTTP_PORT, "").await?,
+    );
     insert_setting(
         &mut body,
         "https_port",
@@ -321,11 +343,7 @@ pub async fn all_settings(st: &AdminState, method: &str) -> AdminResult {
         "message_size_effective",
         json!(format_data_size(effective)),
     );
-    insert_setting(
-        &mut body,
-        "message_size_effective_bytes",
-        json!(effective),
-    );
+    insert_setting(&mut body, "message_size_effective_bytes", json!(effective));
 
     Ok((200, Some(Value::Object(body))))
 }
@@ -509,8 +527,8 @@ pub(crate) async fn generic_setting(
             Ok((200, Some(setting_response(db_key, &value, is_set, false))))
         }
         "POST" => {
-            let req: SettingActionBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: SettingActionBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             match req.action.as_str() {
                 "set" => {
                     let value = body_value_as_string(&req.value);
@@ -525,10 +543,7 @@ pub(crate) async fn generic_setting(
                     if db_key == chatmail_db::settings_keys::ADMIN_WEB_PATH {
                         super::toggles::trigger_soft_reload(st).await?;
                     }
-                    Ok((
-                        200,
-                        Some(setting_response(db_key, &value, true, true)),
-                    ))
+                    Ok((200, Some(setting_response(db_key, &value, true, true))))
                 }
                 "reset" => {
                     delete_setting(&st.pool, db_key).await.map_err(db_err)?;
@@ -536,10 +551,7 @@ pub(crate) async fn generic_setting(
                     if db_key == chatmail_db::settings_keys::ADMIN_WEB_PATH {
                         super::toggles::trigger_soft_reload(st).await?;
                     }
-                    Ok((
-                        200,
-                        Some(setting_response(db_key, "", false, true)),
-                    ))
+                    Ok((200, Some(setting_response(db_key, "", false, true))))
                 }
                 _ => Err((
                     400,
@@ -568,8 +580,8 @@ async fn db_toggle_setting(
             Ok((200, Some(json!({ "status": status }))))
         }
         "POST" => {
-            let req: SettingActionBody = serde_json::from_value(body.clone())
-                .map_err(|e| (400, e.to_string()))?;
+            let req: SettingActionBody =
+                serde_json::from_value(body.clone()).map_err(|e| (400, e.to_string()))?;
             let on = match req.action.to_ascii_lowercase().as_str() {
                 "enable" => true,
                 "disable" => false,

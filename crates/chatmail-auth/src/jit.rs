@@ -19,8 +19,8 @@ use std::sync::Arc;
 
 use chatmail_config::CredentialPolicy;
 use chatmail_db::{
-    blocklist, get_bool_setting, passwords, registration_tokens, settings_keys,
-    FirstLoginOutcome, DbPool,
+    blocklist, get_bool_setting, passwords, registration_tokens, settings_keys, DbPool,
+    FirstLoginOutcome,
 };
 use chatmail_state::AppState;
 use chatmail_storage::MailboxStore;
@@ -49,17 +49,12 @@ impl AuthContext {
 }
 
 /// Authenticate user; JIT-create account when enabled (Madmail pass_table + imapsql).
-pub async fn authenticate(
-    ctx: &AuthContext,
-    username: &str,
-    password: &str,
-) -> Result<()> {
+pub async fn authenticate(ctx: &AuthContext, username: &str, password: &str) -> Result<()> {
     let user = normalize_username(username)?;
 
     if let Some(ref jit) = ctx.jit_domain {
         if !jit.is_empty() {
-            validate_login_domain(&user, jit)
-                .map_err(|e| ChatmailError::config(e))?;
+            validate_login_domain(&user, jit).map_err(ChatmailError::config)?;
         }
     }
 
@@ -151,7 +146,9 @@ mod tests {
     #[tokio::test]
     async fn p3_ut03_test_jit_creates_user() {
         let (ctx, _dir) = ctx_with_jit(true).await;
-        authenticate(&ctx, "newuser1@example.org", "longpassword").await.unwrap();
+        authenticate(&ctx, "newuser1@example.org", "longpassword")
+            .await
+            .unwrap();
         assert!(passwords::get_user_hash(&ctx.pool, "newuser1@example.org")
             .await
             .unwrap()
@@ -188,27 +185,27 @@ mod tests {
     #[tokio::test]
     async fn p3_ut05_jit_rejects_short_localpart() {
         let (ctx, _dir) = ctx_with_jit(true).await;
-        let err = authenticate(&ctx, "ab@example.org", "longpassword1").await.unwrap_err();
+        let err = authenticate(&ctx, "ab@example.org", "longpassword1")
+            .await
+            .unwrap_err();
         assert!(matches!(err, ChatmailError::Config(msg) if msg.contains("between 8 and 20")));
-        assert!(
-            passwords::get_user_hash(&ctx.pool, "ab@example.org")
-                .await
-                .unwrap()
-                .is_none()
-        );
+        assert!(passwords::get_user_hash(&ctx.pool, "ab@example.org")
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
     async fn p3_ut05_jit_rejects_short_password() {
         let (ctx, _dir) = ctx_with_jit(true).await;
-        let err = authenticate(&ctx, "validuser@example.org", "short").await.unwrap_err();
+        let err = authenticate(&ctx, "validuser@example.org", "short")
+            .await
+            .unwrap_err();
         assert!(matches!(err, ChatmailError::Config(msg) if msg.contains("at least 8")));
-        assert!(
-            passwords::get_user_hash(&ctx.pool, "validuser@example.org")
-                .await
-                .unwrap()
-                .is_none()
-        );
+        assert!(passwords::get_user_hash(&ctx.pool, "validuser@example.org")
+            .await
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]

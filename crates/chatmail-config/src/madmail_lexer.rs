@@ -92,10 +92,8 @@ impl Lexer {
                 if ch == '\n' {
                     self.line += 1;
                 }
-                if escaped {
-                    if ch != '"' {
-                        val.push('\\');
-                    }
+                if escaped && ch != '"' {
+                    val.push('\\');
                 }
                 val.push(ch);
                 escaped = false;

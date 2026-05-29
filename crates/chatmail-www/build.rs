@@ -25,9 +25,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed=www-src");
     if !src.is_dir() {
-        panic!(
-            "www-src missing; copy from context/madmail/internal/endpoint/chatmail/www"
-        );
+        panic!("www-src missing; copy from context/madmail/internal/endpoint/chatmail/www");
     }
 
     if dst.exists() {
@@ -112,10 +110,7 @@ fn convert_action(s: &str, start: usize) -> Option<(String, usize)> {
     if let Some(stripped) = inner.strip_prefix("if eq .") {
         if let Some((field, value)) = stripped.split_once(' ') {
             let value = value.trim().trim_matches('"');
-            return Some((
-                format!(r#"{{% if {field} == "{value}" %}}"#),
-                new_i,
-            ));
+            return Some((format!(r#"{{% if {field} == "{value}" %}}"#), new_i));
         }
     }
     if let Some(field) = inner.strip_prefix("if .") {

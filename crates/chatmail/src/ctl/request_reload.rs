@@ -23,8 +23,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::admin_url::build_admin_url;
-use crate::admin::resolve_admin_token;
 use super::context::CtlContext;
+use crate::admin::resolve_admin_token;
 
 #[derive(Debug, Deserialize)]
 struct AdminEnvelope {
@@ -39,7 +39,9 @@ pub async fn try_request_soft_reload(ctx: &CtlContext) -> Result<bool> {
         Err(_) => return Ok(false),
     };
     let settings = ctx.load_settings_map().await?;
-    let api_url = build_admin_url(&ctx.config, &settings).trim_end_matches('/').to_string();
+    let api_url = build_admin_url(&ctx.config, &settings)
+        .trim_end_matches('/')
+        .to_string();
 
     let envelope = json!({
         "method": "POST",
@@ -91,7 +93,9 @@ pub async fn try_request_soft_reload(ctx: &CtlContext) -> Result<bool> {
 pub async fn notify_http_routes_changed(ctx: &CtlContext) -> Result<()> {
     match try_request_soft_reload(ctx).await? {
         true => println!("↻ HTTP routes reloaded (admin-web changes are live)."),
-        false => println!("ℹ  Server not running — changes apply on next `madmail run` / service start."),
+        false => {
+            println!("ℹ  Server not running — changes apply on next `madmail run` / service start.")
+        }
     }
     Ok(())
 }

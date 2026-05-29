@@ -25,10 +25,7 @@ use axum::response::IntoResponse;
 /// Official hosted Madmail admin panel (browser origin).
 pub const MADMAIL_ADMIN_PANEL_ORIGIN: &str = "https://admin.madmail.chat";
 
-const DEFAULT_ORIGINS: &[&str] = &[
-    MADMAIL_ADMIN_PANEL_ORIGIN,
-    "http://admin.madmail.chat",
-];
+const DEFAULT_ORIGINS: &[&str] = &[MADMAIL_ADMIN_PANEL_ORIGIN, "http://admin.madmail.chat"];
 
 /// Comma-separated extra origins (`CHATMAIL_ADMIN_CORS_ORIGINS`).
 fn configured_origins() -> Vec<String> {

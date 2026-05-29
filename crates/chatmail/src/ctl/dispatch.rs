@@ -23,8 +23,7 @@ use chatmail_db::settings_keys;
 use super::{
     accounts, admin_token, admin_web, blocklist_cmd, certificate, delete_cmd, endpoint_cache,
     federation, html, install, language, message_size, port, registration, registration_tokens,
-    reload,
-    service_toggle, sharing, status_cmd, tasks, uninstall, version,
+    reload, service_toggle, sharing, status_cmd, tasks, uninstall, version,
 };
 
 pub async fn dispatch(cli: &Cli) -> Result<()> {
@@ -32,8 +31,9 @@ pub async fn dispatch(cli: &Cli) -> Result<()> {
         None | Some(Command::Run) => Err(ChatmailError::config(
             "internal error: dispatch called for server run",
         )),
-        Some(Command::Upgrade { path_or_url })
-        | Some(Command::Update { path_or_url }) => crate::upgrade::upgrade_command(path_or_url),
+        Some(Command::Upgrade { path_or_url }) | Some(Command::Update { path_or_url }) => {
+            crate::upgrade::upgrade_command(path_or_url)
+        }
         Some(Command::AdminToken { raw, no_qr }) => {
             admin_token::admin_token(&cli.args, *raw, *no_qr).await
         }
@@ -57,7 +57,9 @@ pub async fn dispatch(cli: &Cli) -> Result<()> {
         }) => delete_cmd::delete(&cli.args, username, *yes, reason).await,
         Some(Command::HtmlExport { dest }) => html::html_export(&cli.args, dest).await,
         Some(Command::HtmlServe { www_dir }) => html::html_serve(&cli.args, www_dir).await,
-        Some(Command::Language { command }) => language::language(&cli.args, command.as_ref()).await,
+        Some(Command::Language { command }) => {
+            language::language(&cli.args, command.as_ref()).await
+        }
         Some(Command::MessageSize { cmd }) => {
             message_size::message_size(&cli.args, cmd.as_ref()).await
         }

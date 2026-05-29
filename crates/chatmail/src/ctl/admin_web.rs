@@ -72,12 +72,7 @@ async fn status(ctx: &CtlContext) -> Result<()> {
 
 async fn set_flag(ctx: &CtlContext, on: bool) -> Result<()> {
     let pool = ctx.open_pool().await?;
-    set_setting(
-        &pool,
-        ADMIN_WEB_ENABLED,
-        if on { "true" } else { "false" },
-    )
-    .await?;
+    set_setting(&pool, ADMIN_WEB_ENABLED, if on { "true" } else { "false" }).await?;
     if on {
         chatmail_admin_web::ensure_default_admin_web_path(&ctx.config, &pool).await?;
         let path = resolve_admin_web_path(&ctx.config, &pool)

@@ -96,7 +96,7 @@ fn walk_nodes(nodes: &[Node], block_path: &[&str], cfg: &mut AppConfig) {
     }
 }
 
-fn in_block<'a>(block_path: &[&'a str], name: &str) -> bool {
+fn in_block(block_path: &[&str], name: &str) -> bool {
     block_path.iter().any(|b| *b == name || b.starts_with(name))
 }
 
@@ -233,10 +233,11 @@ fn apply_directive(name: &str, args: &[String], block_path: &[&str], cfg: &mut A
         }
     }
 
-    if in_block(block_path, "smtp") || in_block(block_path, "submission") {
-        if name == "max_message_size" && has_value {
-            cfg.max_message_size = Some(value.clone());
-        }
+    if (in_block(block_path, "smtp") || in_block(block_path, "submission"))
+        && name == "max_message_size"
+        && has_value
+    {
+        cfg.max_message_size = Some(value.clone());
     }
 
     if in_block(block_path, "target.queue") {
@@ -384,41 +385,42 @@ fn strip_quotes(s: &str) -> String {
     }
 }
 
+/// Failed to parse a Go-style duration string (`24h`, `7d`, `15m`, …).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParseDurationError;
+
 /// Go-style duration suffixes used by Madmail (`24h`, `7d`, `15m`, …).
-pub fn parse_duration(s: &str) -> Result<std::time::Duration, ()> {
+pub fn parse_duration(s: &str) -> Result<std::time::Duration, ParseDurationError> {
     let s = s.trim();
     if s.is_empty() || s == "0" {
-        return Err(());
+        return Err(ParseDurationError);
     }
     if let Some(d) = s.strip_suffix('d') {
-        let n: u64 = d.trim().parse().map_err(|_| ())?;
+        let n: u64 = d.trim().parse().map_err(|_| ParseDurationError)?;
         return Ok(std::time::Duration::from_secs(n * 86400));
     }
     if let Some(h) = s.strip_suffix('h') {
-        let n: u64 = h.trim().parse().map_err(|_| ())?;
+        let n: u64 = h.trim().parse().map_err(|_| ParseDurationError)?;
         return Ok(std::time::Duration::from_secs(n * 3600));
     }
     if let Some(m) = s.strip_suffix('m') {
-        let n: u64 = m.trim().parse().map_err(|_| ())?;
+        let n: u64 = m.trim().parse().map_err(|_| ParseDurationError)?;
         return Ok(std::time::Duration::from_secs(n * 60));
     }
     if let Some(sec) = s.strip_suffix('s') {
-        let n: u64 = sec.trim().parse().map_err(|_| ())?;
+        let n: u64 = sec.trim().parse().map_err(|_| ParseDurationError)?;
         return Ok(std::time::Duration::from_secs(n));
     }
-    let n: u64 = s.parse().map_err(|_| ())?;
+    let n: u64 = s.parse().map_err(|_| ParseDurationError)?;
     Ok(std::time::Duration::from_secs(n))
 }
 
-fn parse_go_duration(s: &str) -> Result<std::time::Duration, ()> {
+fn parse_go_duration(s: &str) -> Result<std::time::Duration, ParseDurationError> {
     parse_duration(s)
 }
 
 fn parse_bool(s: &str) -> bool {
-    matches!(
-        s.to_ascii_lowercase().as_str(),
-        "1" | "true" | "on" | "yes"
-    )
+    matches!(s.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes")
 }
 
 /// Convert `tcp://0.0.0.0:25` / `tls://0.0.0.0:465` to `0.0.0.0:25` (Madmail `config.Endpoint::Address`).
@@ -548,10 +550,7 @@ target.queue remote_queue {
         assert_eq!(cfg.hostname.as_deref(), Some("mail.example.org"));
         assert_eq!(cfg.primary_domain.as_deref(), Some("example.org"));
         assert_eq!(cfg.local_domains.as_deref(), Some("example.org extra.org"));
-        assert_eq!(
-            cfg.state_dir.as_deref(),
-            Some(Path::new("/var/lib/maddy"))
-        );
+        assert_eq!(cfg.state_dir.as_deref(), Some(Path::new("/var/lib/maddy")));
         assert_eq!(cfg.runtime_dir.as_deref(), Some(Path::new("/run/maddy")));
         assert!(cfg.auth_auto_create);
         assert_eq!(cfg.jit_domain.as_deref(), Some("example.org"));
@@ -651,7 +650,8 @@ auth.pass_table local_authdb {
 
     #[test]
     fn tls_file_block_sets_mode() {
-        let content = "tls file /var/lib/maddy/certs/fullchain.pem /var/lib/maddy/certs/privkey.pem\n";
+        let content =
+            "tls file /var/lib/maddy/certs/fullchain.pem /var/lib/maddy/certs/privkey.pem\n";
         let cfg = parse_maddy_config(content).unwrap();
         assert_eq!(cfg.tls_mode.as_deref(), Some("file"));
         assert_eq!(
@@ -713,10 +713,7 @@ turn {
     #[test]
     fn parses_openmetrics_listen() {
         let cfg = parse_maddy_config("openmetrics tcp://127.0.0.1:9100 {\n}\n").unwrap();
-        assert_eq!(
-            cfg.openmetrics_listen.as_deref(),
-            Some("127.0.0.1:9100")
-        );
+        assert_eq!(cfg.openmetrics_listen.as_deref(), Some("127.0.0.1:9100"));
     }
 
     #[test]

@@ -18,10 +18,10 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use chatmail_db::passwords;
+use chatmail_db::{db_fetch_all, db_fetch_optional, schema::quota_table, DbPool};
 use chatmail_storage::MailboxStore;
 use chatmail_types::{ChatmailError, Result};
 use dashmap::DashMap;
-use chatmail_db::{db_fetch_all, db_fetch_optional, schema::quota_table, DbPool};
 
 use chatmail_db::settings_keys::GLOBAL_QUOTA_USERNAME;
 
@@ -127,15 +127,16 @@ impl QuotaCache {
 
     /// Load quotas from DB and scan maildir usage (Madmail `populateQuotaCache`).
     pub async fn hydrate(&self, pool: &DbPool, store: &MailboxStore) -> Result<()> {
-        let default_max = Self::load_default_max_from_db(pool, self.config_default_max_bytes).await?;
+        let default_max =
+            Self::load_default_max_from_db(pool, self.config_default_max_bytes).await?;
         self.set_default_max(default_max);
 
         let qt = quota_table(pool).await?;
         let sql = format!("SELECT username, max_storage FROM {qt} WHERE username != ?");
-        let rows: Vec<(String, i64)> = db_fetch_all!(pool, (String, i64), &sql, GLOBAL_QUOTA_USERNAME)?;
+        let rows: Vec<(String, i64)> =
+            db_fetch_all!(pool, (String, i64), &sql, GLOBAL_QUOTA_USERNAME)?;
 
-        let quota_map: std::collections::HashMap<String, i64> =
-            rows.into_iter().map(|(u, m)| (u, m)).collect();
+        let quota_map: std::collections::HashMap<String, i64> = rows.into_iter().collect();
 
         let all_users = passwords::list_users(pool).await?;
         for user in &all_users {
@@ -180,8 +181,7 @@ impl QuotaCache {
     async fn load_default_max_from_db(pool: &DbPool, config_default: u64) -> Result<u64> {
         let qt = quota_table(pool).await?;
         let sql = format!("SELECT max_storage FROM {qt} WHERE username = ?");
-        let row: Option<(i64,)> =
-            db_fetch_optional!(pool, (i64,), &sql, GLOBAL_QUOTA_USERNAME)?;
+        let row: Option<(i64,)> = db_fetch_optional!(pool, (i64,), &sql, GLOBAL_QUOTA_USERNAME)?;
         Ok(match row {
             Some((m,)) if m > 0 => m as u64,
             _ => config_default,
@@ -190,16 +190,12 @@ impl QuotaCache {
 
     pub fn record_write(&self, user: &str, bytes: u64) {
         if let Some(entry) = self.entries.get(user) {
-            entry
-                .used_bytes
-                .fetch_add(bytes, Ordering::Relaxed);
+            entry.used_bytes.fetch_add(bytes, Ordering::Relaxed);
             return;
         }
         let (_, max, is_default) = self.get_quota(user);
-        self.entries.insert(
-            user.to_string(),
-            QuotaEntry::new(bytes, max, is_default),
-        );
+        self.entries
+            .insert(user.to_string(), QuotaEntry::new(bytes, max, is_default));
     }
 
     pub fn used_bytes(&self, user: &str) -> u64 {
@@ -222,10 +218,8 @@ impl QuotaCache {
         }
         // Ensure cache entry exists for subsequent record_write.
         if !self.entries.contains_key(user) {
-            self.entries.insert(
-                user.to_string(),
-                QuotaEntry::new(used, max, true),
-            );
+            self.entries
+                .insert(user.to_string(), QuotaEntry::new(used, max, true));
         }
         Ok(())
     }

@@ -30,9 +30,7 @@ use tokio_util::sync::CancellationToken;
 async fn tcp_get_metrics(addr: SocketAddr) -> String {
     let mut stream = TcpStream::connect(addr).await.expect("tcp connect");
     stream
-        .write_all(
-            b"GET /metrics HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
-        )
+        .write_all(b"GET /metrics HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
         .await
         .expect("write");
     let mut raw = Vec::new();
@@ -69,9 +67,7 @@ async fn openmetrics_serves_prometheus_text_on_metrics_path() {
     let cancel_bg = cancel.clone();
     let listen_bg = listen.clone();
 
-    let server = tokio::spawn(async move {
-        run_openmetrics_listener(&listen_bg, cancel_bg).await
-    });
+    let server = tokio::spawn(async move { run_openmetrics_listener(&listen_bg, cancel_bg).await });
 
     tokio::time::sleep(Duration::from_millis(150)).await;
     if server.is_finished() {
@@ -119,12 +115,19 @@ async fn openmetrics_serves_prometheus_text_on_metrics_path() {
     let resp = client.get(&url).send().await.expect("second scrape");
     assert_eq!(resp.status(), 200);
     let body2 = resp.text().await.expect("body");
-    let started = parse_sample(&body2, "maddy_smtp_started_transactions", r#"module="http_itest""#)
-        .expect("started sample");
+    let started = parse_sample(
+        &body2,
+        "maddy_smtp_started_transactions",
+        r#"module="http_itest""#,
+    )
+    .expect("started sample");
     assert!(started >= 1.0, "body: {body2}");
-    let completed =
-        parse_sample(&body2, "maddy_smtp_smtp_completed_transactions", r#"module="http_itest""#)
-            .expect("completed sample");
+    let completed = parse_sample(
+        &body2,
+        "maddy_smtp_smtp_completed_transactions",
+        r#"module="http_itest""#,
+    )
+    .expect("completed sample");
     assert!(completed >= 1.0);
     let queue = parse_sample(&body2, "maddy_queue_length", r#"module="remote_queue""#)
         .expect("queue sample");

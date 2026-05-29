@@ -50,9 +50,7 @@ impl TaskId {
 
     pub fn parse(s: &str) -> Option<Self> {
         match s.trim().to_ascii_lowercase().as_str() {
-            "prune-old-messages" | "prune-messages" | "retention" => {
-                Some(TaskId::PruneOldMessages)
-            }
+            "prune-old-messages" | "prune-messages" | "retention" => Some(TaskId::PruneOldMessages),
             "prune-unused-accounts" | "prune-unused" | "unused-accounts" => {
                 Some(TaskId::PruneUnusedAccounts)
             }
@@ -80,9 +78,7 @@ impl TaskId {
                 "Delete accounts that never logged in, older than unused_account_retention"
             }
             TaskId::PurgeSeenMessages => "Delete maildir cur/ (seen) messages",
-            TaskId::PruneUnreadOlder => {
-                "Delete maildir new/ messages older than --retention"
-            }
+            TaskId::PruneUnreadOlder => "Delete maildir new/ messages older than --retention",
         }
     }
 }
@@ -145,7 +141,10 @@ pub async fn run_all_configured(ctx: &TaskContext<'_>) -> Result<TaskRunReport> 
     Ok(report)
 }
 
-pub async fn run_auto_purge_seen_if_enabled(pool: &DbPool, mailbox: &MailboxStore) -> Result<Option<usize>> {
+pub async fn run_auto_purge_seen_if_enabled(
+    pool: &DbPool,
+    mailbox: &MailboxStore,
+) -> Result<Option<usize>> {
     if !get_enabled_setting(pool, settings_keys::AUTO_PURGE_SEEN, false).await? {
         return Ok(None);
     }
@@ -227,7 +226,10 @@ pub async fn prune_unused_accounts_with_retention(
     let mut deleted = 0usize;
     for username in accounts {
         let mail_root = mailbox.maildir_for_user(&username).root;
-        if remove_account_without_blocklist(pool, &username, &mail_root).await.is_ok() {
+        if remove_account_without_blocklist(pool, &username, &mail_root)
+            .await
+            .is_ok()
+        {
             deleted += 1;
         }
     }
@@ -254,18 +256,20 @@ mod tests {
     use std::path::Path;
     use std::time::Duration;
 
-    use filetime::{set_file_mtime, FileTime};
     use super::*;
     use chatmail_config::AppConfig;
     use chatmail_db::{init_memory_db, passwords, registration_tokens};
     use chatmail_storage::{list_inbox, write_blob, MailboxStore};
+    use filetime::{set_file_mtime, FileTime};
 
     fn touch_unix_epoch(path: &Path) {
         set_file_mtime(path, FileTime::from_unix_time(1, 0)).unwrap();
     }
 
     async fn seed_dormant_account(pool: &DbPool, username: &str, created_at: i64) {
-        passwords::create_user(pool, username, "hash").await.unwrap();
+        passwords::create_user(pool, username, "hash")
+            .await
+            .unwrap();
         registration_tokens::ensure_new_account_quota(pool, username)
             .await
             .unwrap();
@@ -293,7 +297,10 @@ mod tests {
 
     #[test]
     fn task_id_aliases() {
-        assert_eq!(TaskId::parse("prune-unused"), Some(TaskId::PruneUnusedAccounts));
+        assert_eq!(
+            TaskId::parse("prune-unused"),
+            Some(TaskId::PruneUnusedAccounts)
+        );
         assert_eq!(TaskId::parse("retention"), Some(TaskId::PruneOldMessages));
     }
 
@@ -308,7 +315,9 @@ mod tests {
             mailbox: &mailbox,
             maintenance: &maintenance,
         };
-        let out = run_task(&ctx, TaskId::PruneOldMessages, None).await.unwrap();
+        let out = run_task(&ctx, TaskId::PruneOldMessages, None)
+            .await
+            .unwrap();
         assert!(out.skipped);
     }
 
@@ -323,9 +332,13 @@ mod tests {
         seed_logged_in_account(&pool, "active@test", 1).await;
 
         mailbox.init_user_dir("dormant@test").await.unwrap();
-        write_blob(&mailbox, "dormant@test", "m1", b"bye").await.unwrap();
+        write_blob(&mailbox, "dormant@test", "m1", b"bye")
+            .await
+            .unwrap();
         mailbox.init_user_dir("active@test").await.unwrap();
-        write_blob(&mailbox, "active@test", "m2", b"stay").await.unwrap();
+        write_blob(&mailbox, "active@test", "m2", b"stay")
+            .await
+            .unwrap();
 
         let deleted =
             prune_unused_accounts_with_retention(&pool, &mailbox, Duration::from_secs(3600))
@@ -335,15 +348,16 @@ mod tests {
 
         assert!(!passwords::user_exists(&pool, "dormant@test").await.unwrap());
         assert!(!mailbox.maildir_for_user("dormant@test").root.exists());
-        assert!(list_inbox(&mailbox, "dormant@test").await.unwrap().is_empty());
+        assert!(list_inbox(&mailbox, "dormant@test")
+            .await
+            .unwrap()
+            .is_empty());
 
         assert!(passwords::user_exists(&pool, "active@test").await.unwrap());
         assert_eq!(list_inbox(&mailbox, "active@test").await.unwrap().len(), 1);
-        assert!(
-            !chatmail_db::blocklist::is_blocked(&pool, "dormant@test")
-                .await
-                .unwrap()
-        );
+        assert!(!chatmail_db::blocklist::is_blocked(&pool, "dormant@test")
+            .await
+            .unwrap());
     }
 
     #[tokio::test]
@@ -408,7 +422,9 @@ mod tests {
         let mailbox = MailboxStore::new(dir.path());
         let maintenance = MaintenanceConfig::from_app_config(&AppConfig::default()).unwrap();
         let paths = mailbox.init_user_dir("u@test").await.unwrap();
-        write_blob(&mailbox, "u@test", "unread", b"n").await.unwrap();
+        write_blob(&mailbox, "u@test", "unread", b"n")
+            .await
+            .unwrap();
         write_blob(&mailbox, "u@test", "read", b"r").await.unwrap();
         tokio::fs::rename(paths.new.join("read"), paths.cur.join("read"))
             .await
@@ -465,9 +481,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mailbox = MailboxStore::new(dir.path());
 
-        let mut cfg = AppConfig::default();
-        cfg.retention = Some("24h".into());
-        cfg.unused_account_retention = Some("720h".into());
+        let cfg = AppConfig {
+            retention: Some("24h".into()),
+            unused_account_retention: Some("720h".into()),
+            ..Default::default()
+        };
         let maintenance = MaintenanceConfig::from_app_config(&cfg).unwrap();
 
         seed_dormant_account(&pool, "gone@test", 1).await;
@@ -483,10 +501,7 @@ mod tests {
         let report = run_all_configured(&ctx).await.unwrap();
         assert_eq!(report.outcomes.len(), 2);
         assert!(
-            report
-                .outcomes
-                .iter()
-                .all(|o| !o.skipped && o.deleted >= 1),
+            report.outcomes.iter().all(|o| !o.skipped && o.deleted >= 1),
             "expected deletions: {:?}",
             report.outcomes
         );

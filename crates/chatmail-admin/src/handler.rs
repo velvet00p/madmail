@@ -84,13 +84,7 @@ pub async fn admin_handler(
         .unwrap_or("127.0.0.1");
     let inner = req.headers.unwrap_or_default();
     if !st.auth.authenticate(&inner, remote) {
-        return Json(envelope(
-            &st,
-            401,
-            None,
-            None,
-            Some("unauthorized"),
-        ));
+        return Json(envelope(&st, 401, None, None, Some("unauthorized")));
     }
 
     let method = req
@@ -100,13 +94,7 @@ pub async fn admin_handler(
 
     match resources::dispatch(&st, &method, &req.resource, &req.body).await {
         Ok((status, body)) => Json(envelope(&st, status, Some(&req.resource), body, None)),
-        Err((status, msg)) => Json(envelope(
-            &st,
-            status,
-            Some(&req.resource),
-            None,
-            Some(&msg),
-        )),
+        Err((status, msg)) => Json(envelope(&st, status, Some(&req.resource), None, Some(&msg))),
     }
 }
 
@@ -125,4 +113,3 @@ fn envelope(
         version: st.version.clone(),
     }
 }
-

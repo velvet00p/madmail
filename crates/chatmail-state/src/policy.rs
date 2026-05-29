@@ -18,9 +18,7 @@
 use std::collections::HashSet;
 use std::sync::RwLock;
 
-use chatmail_db::{
-    db_execute, db_fetch_all, normalize_federation_domain, pg_sql, DbPool,
-};
+use chatmail_db::{db_execute, db_fetch_all, normalize_federation_domain, pg_sql, DbPool};
 use chatmail_types::Result;
 
 /// Global federation mode (TDD / Madmail admin API).
@@ -57,10 +55,7 @@ impl FederationPolicyCache {
     pub async fn hydrate(&self, pool: &DbPool) -> Result<()> {
         let rows: Vec<(String,)> =
             db_fetch_all!(pool, (String,), "SELECT domain FROM federation_rules")?;
-        let mut set = self
-            .exceptions
-            .write()
-            .expect("policy cache lock");
+        let mut set = self.exceptions.write().expect("policy cache lock");
         set.clear();
         for (domain,) in rows {
             set.insert(normalize_federation_domain(&domain));

@@ -22,6 +22,14 @@ use chatmail_types::{ChatmailError, Result};
 use crate::pool::pg_sql;
 use crate::{db_execute, db_fetch_all, db_fetch_optional, DbPool};
 
+type EndpointOverrideTuple = (
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
 #[derive(Debug, Clone)]
 pub struct EndpointOverrideRow {
     pub lookup_key: String,
@@ -56,12 +64,7 @@ fn map_row(
 }
 
 pub async fn list_endpoint_overrides(pool: &DbPool) -> Result<Vec<EndpointOverrideRow>> {
-    let rows: Vec<(String, String, Option<String>, Option<String>, Option<String>)> =
-        db_fetch_all!(
-            pool,
-            (String, String, Option<String>, Option<String>, Option<String>),
-            SELECT_ALL
-        )?;
+    let rows: Vec<EndpointOverrideTuple> = db_fetch_all!(pool, EndpointOverrideTuple, SELECT_ALL)?;
     Ok(rows.into_iter().map(map_row).collect())
 }
 
@@ -69,13 +72,8 @@ pub async fn get_endpoint_override(
     pool: &DbPool,
     lookup_key: &str,
 ) -> Result<Option<EndpointOverrideRow>> {
-    let row: Option<(String, String, Option<String>, Option<String>, Option<String>)> =
-        db_fetch_optional!(
-            pool,
-            (String, String, Option<String>, Option<String>, Option<String>),
-            SELECT_ONE,
-            lookup_key
-        )?;
+    let row: Option<EndpointOverrideTuple> =
+        db_fetch_optional!(pool, EndpointOverrideTuple, SELECT_ONE, lookup_key)?;
     Ok(row.map(map_row))
 }
 
@@ -86,7 +84,9 @@ pub async fn set_endpoint_override(
     comment: &str,
 ) -> Result<()> {
     if lookup_key.trim().is_empty() || target_host.trim().is_empty() {
-        return Err(ChatmailError::config("LOOKUP_KEY and TARGET_HOST are required"));
+        return Err(ChatmailError::config(
+            "LOOKUP_KEY and TARGET_HOST are required",
+        ));
     }
     db_execute!(
         pool,
@@ -104,13 +104,11 @@ pub async fn set_endpoint_override(
 
 pub async fn remove_endpoint_override(pool: &DbPool, lookup_key: &str) -> Result<bool> {
     let affected = match pool {
-        DbPool::Sqlite(p) => {
-            sqlx::query("DELETE FROM dns_overrides WHERE lookup_key = ?")
-                .bind(lookup_key)
-                .execute(p)
-                .await?
-                .rows_affected()
-        }
+        DbPool::Sqlite(p) => sqlx::query("DELETE FROM dns_overrides WHERE lookup_key = ?")
+            .bind(lookup_key)
+            .execute(p)
+            .await?
+            .rows_affected(),
         DbPool::Postgres(p) => {
             sqlx::query(&pg_sql("DELETE FROM dns_overrides WHERE lookup_key = ?"))
                 .bind(lookup_key)

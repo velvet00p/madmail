@@ -33,9 +33,15 @@ async fn turn_smoke_stun_binding() {
         s.local_addr().unwrap()
     };
 
-    let _srv = spawn_turn_server_with_opts("smoke-secret", "test", listen, listen, TurnSpawnOpts::for_tests())
-        .await
-        .expect("spawn TURN");
+    let _srv = spawn_turn_server_with_opts(
+        "smoke-secret",
+        "test",
+        listen,
+        listen,
+        TurnSpawnOpts::for_tests(),
+    )
+    .await
+    .expect("spawn TURN");
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
@@ -46,7 +52,11 @@ async fn turn_smoke_stun_binding() {
     let (resp, _) = exchange(&socket, listen, STUN_BINDING_REQUEST)
         .await
         .expect("binding response");
-    assert!(resp.len() >= 20, "short STUN response: {} bytes", resp.len());
+    assert!(
+        resp.len() >= 20,
+        "short STUN response: {} bytes",
+        resp.len()
+    );
     assert_eq!(
         &resp[4..8],
         &[0x21, 0x12, 0xA4, 0x42],

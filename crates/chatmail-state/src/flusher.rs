@@ -67,10 +67,7 @@ pub fn start_flusher(pool: DbPool, tracker: Arc<FederationTracker>) -> FlusherHa
     FlusherHandle { shutdown_tx, task }
 }
 
-pub async fn flush_federation_stats(
-    pool: &DbPool,
-    tracker: &FederationTracker,
-) -> Result<()> {
+pub async fn flush_federation_stats(pool: &DbPool, tracker: &FederationTracker) -> Result<()> {
     let cols = chatmail_db::schema::federation_stats_columns(pool).await?;
     let sql = format!(
         "INSERT INTO federation_server_stats (

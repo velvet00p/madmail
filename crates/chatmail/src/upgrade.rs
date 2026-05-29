@@ -24,9 +24,9 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
+use chatmail_types::{ChatmailError, Result};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use reqwest::blocking::Client;
-use chatmail_types::{ChatmailError, Result};
 
 /// Madmail release signing public key (`internal/auth/signature_key.go`).
 const PUBLIC_KEY_HEX: &str = "7cb0bcc1d8e91e51f631c9ad6025e8e6e0222a27c3eeaf8608cf1c8430a6c6b0";
@@ -97,7 +97,10 @@ fn build_download_client() -> Result<Client> {
 fn handle_update_url(url: &str) -> Result<()> {
     let tmp_path = std::env::temp_dir().join(format!("madmail-update-{}", std::process::id()));
     let mut tmp_file = File::create(&tmp_path).map_err(|e| {
-        ChatmailError::config(format!("failed to create temp file {}: {e}", tmp_path.display()))
+        ChatmailError::config(format!(
+            "failed to create temp file {}: {e}",
+            tmp_path.display()
+        ))
     })?;
 
     let cleanup = || {
@@ -237,17 +240,16 @@ pub fn perform_upgrade(new_bin_path: &Path) -> Result<()> {
     }
 
     let iroh_unit = PathBuf::from("/etc/systemd/system/iroh-relay.service");
-    if iroh_unit.is_file() {
-        if !Command::new("systemctl")
+    if iroh_unit.is_file()
+        && !Command::new("systemctl")
             .args(["start", "iroh-relay.service"])
             .status()
             .map(|s| s.success())
             .unwrap_or(false)
-        {
-            eprintln!(
+    {
+        eprintln!(
                 "⚠️ Warning: failed to start iroh-relay.service; try: systemctl start iroh-relay.service"
             );
-        }
     }
 
     eprintln!("🎉 Upgrade complete.");

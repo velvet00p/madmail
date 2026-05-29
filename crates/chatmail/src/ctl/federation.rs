@@ -105,9 +105,7 @@ pub async fn federation(args: &Args, cmd: &FederationCommand) -> Result<()> {
                 return Err(ChatmailError::config("DOMAIN is required"));
             }
             let remaining = dismiss.remove_count(&pool, domain).await?;
-            println!(
-                "Success: Removed '{domain}' from silent dismiss. {remaining} remaining."
-            );
+            println!("Success: Removed '{domain}' from silent dismiss. {remaining} remaining.");
         }
         FederationCommand::DismissList => {
             let rules = dismiss.list_rules(&pool).await?;

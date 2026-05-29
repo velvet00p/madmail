@@ -23,8 +23,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chatmail_config::cli::RegistrationTokensCommand;
 use chatmail_config::Args;
-use chatmail_types::{ChatmailError, Result};
 use chatmail_db::{db_execute, db_fetch_all, db_fetch_optional, db_fetch_scalar, pg_sql, DbPool};
+use chatmail_types::{ChatmailError, Result};
 use getrandom::fill;
 
 use super::context::CtlContext;
@@ -48,7 +48,16 @@ pub async fn registration_tokens(args: &Args, cmd: &RegistrationTokensCommand) -
             max_uses,
             comment,
             expires,
-        } => create_token(&pool, token.as_deref(), *max_uses, comment, expires.as_deref()).await,
+        } => {
+            create_token(
+                &pool,
+                token.as_deref(),
+                *max_uses,
+                comment,
+                expires.as_deref(),
+            )
+            .await
+        }
         RegistrationTokensCommand::List => list_tokens(&pool).await,
         RegistrationTokensCommand::Status { token } => status_token(&pool, token).await,
         RegistrationTokensCommand::Delete { token } => delete_token(&pool, token).await,
@@ -116,8 +125,8 @@ async fn list_tokens(pool: &DbPool) -> Result<()> {
     let now = SystemTime::now();
     println!();
     println!(
-        "{:<28} {:<8} {:<10} {:<10} {:<10} {}",
-        "TOKEN", "MAX", "CONSUMED", "PENDING", "STATUS", "COMMENT"
+        "{:<28} {:<8} {:<10} {:<10} {:<10} COMMENT",
+        "TOKEN", "MAX", "CONSUMED", "PENDING", "STATUS"
     );
     println!("{}", "-".repeat(90));
 
@@ -128,7 +137,13 @@ async fn list_tokens(pool: &DbPool) -> Result<()> {
             "SELECT COUNT(*) FROM quotas WHERE used_token = ? AND first_login_at = 1",
             token.as_str()
         )?;
-        let status = token_status(max_uses, used_count, pending as i32, expires_at.as_deref(), now);
+        let status = token_status(
+            max_uses,
+            used_count,
+            pending as i32,
+            expires_at.as_deref(),
+            now,
+        );
         let comment = comment.unwrap_or_default();
         let comment = truncate_str(&comment, 20);
         println!(
@@ -165,7 +180,13 @@ async fn status_token(pool: &DbPool, token: &str) -> Result<()> {
     )?;
 
     let now = SystemTime::now();
-    let status = token_status(max_uses, used_count, pending as i32, expires_at.as_deref(), now);
+    let status = token_status(
+        max_uses,
+        used_count,
+        pending as i32,
+        expires_at.as_deref(),
+        now,
+    );
     let available = i64::from(max_uses) - i64::from(used_count) - pending;
 
     println!();
@@ -220,13 +241,11 @@ async fn status_token(pool: &DbPool, token: &str) -> Result<()> {
 
 async fn delete_token(pool: &DbPool, token: &str) -> Result<()> {
     let affected = match pool {
-        DbPool::Sqlite(p) => {
-            sqlx::query("DELETE FROM registration_tokens WHERE token = ?")
-                .bind(token)
-                .execute(p)
-                .await?
-                .rows_affected()
-        }
+        DbPool::Sqlite(p) => sqlx::query("DELETE FROM registration_tokens WHERE token = ?")
+            .bind(token)
+            .execute(p)
+            .await?
+            .rows_affected(),
         DbPool::Postgres(p) => {
             sqlx::query(&pg_sql("DELETE FROM registration_tokens WHERE token = ?"))
                 .bind(token)
@@ -318,8 +337,7 @@ fn parse_sqlite_timestamp(s: &str) -> Option<SystemTime> {
     if s.is_empty() {
         return None;
     }
-    if let Ok(dt) = time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
-    {
+    if let Ok(dt) = time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339) {
         return Some(
             UNIX_EPOCH
                 + Duration::from_secs(dt.unix_timestamp().max(0) as u64)

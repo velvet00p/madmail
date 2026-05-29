@@ -43,10 +43,7 @@ impl ImapClient {
             .write_all(line.as_bytes())
             .await
             .expect("imap write");
-        self.stream
-            .write_all(b"\r\n")
-            .await
-            .expect("imap crlf");
+        self.stream.write_all(b"\r\n").await.expect("imap crlf");
     }
 
     /// Send a command and read until a tagged completion, BAD, or NO […].

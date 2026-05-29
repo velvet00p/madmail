@@ -37,7 +37,8 @@ pub async fn list_account_quota_info(pool: &DbPool) -> Result<HashMap<String, Ac
         "SELECT username, created_at, first_login_at, last_login_at FROM {qt}
          WHERE username != ?"
     );
-    let rows: Vec<(String, i64, i64, i64)> = db_fetch_all!(pool, (String, i64, i64, i64), &sql, GLOBAL_QUOTA_USERNAME)?;
+    let rows: Vec<(String, i64, i64, i64)> =
+        db_fetch_all!(pool, (String, i64, i64, i64), &sql, GLOBAL_QUOTA_USERNAME)?;
 
     Ok(rows
         .into_iter()

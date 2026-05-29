@@ -42,8 +42,10 @@ mod tests {
     #[tokio::test]
     async fn global_default_row_overrides_config() {
         let pool = init_memory_db().await.unwrap();
-        let mut cfg = chatmail_config::AppConfig::default();
-        cfg.default_quota = Some("1G".into());
+        let cfg = chatmail_config::AppConfig {
+            default_quota: Some("1G".into()),
+            ..Default::default()
+        };
         let DbPool::Sqlite(p) = &pool else {
             panic!("memory db is sqlite");
         };

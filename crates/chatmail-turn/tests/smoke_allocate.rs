@@ -43,9 +43,10 @@ async fn turn_smoke_turn_allocate() {
     let line = turn_metadata_line("127.0.0.1", listen.port(), secret, 3600, now).unwrap();
     let parsed = parse_turn_metadata(&line).unwrap();
 
-    let _server = spawn_turn_server_with_opts(secret, realm, listen, listen, TurnSpawnOpts::for_tests())
-        .await
-        .expect("spawn TURN");
+    let _server =
+        spawn_turn_server_with_opts(secret, realm, listen, listen, TurnSpawnOpts::for_tests())
+            .await
+            .expect("spawn TURN");
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let relay = turn_allocate(
