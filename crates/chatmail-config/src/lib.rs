@@ -34,19 +34,18 @@ pub use config_www::update_config_www_dir;
 
 use std::path::PathBuf;
 
+pub use autoconfig::{build_autoconfig_xml, AutoconfigParams};
 pub use cli::{
     AdminWebCommand, Args, Cli, Command, EndpointCacheCommand, FederationCommand, LanguageCommand,
     PortCommand, PortServiceCommand, RegistrationCommand, RegistrationTokensCommand,
     ServiceToggleCommand, SharingCommand, TasksCommand, UninstallArgs,
 };
-pub use autoconfig::{build_autoconfig_xml, AutoconfigParams};
 pub use client_mail::{
     build_dclogin_link, client_connect_host, effective_http_listen, effective_http_plain_listen,
     effective_http_tls_listen, effective_imap_listen, effective_imap_plain_listen,
     effective_imap_tls_listen, effective_smtp_listen, effective_submission_plain_listen,
     effective_submission_tls_listen, effective_tls_pem_paths, listeners_need_tls_cert,
-    port_from_listen, DbMailPorts,
-    DcloginMailSettings, RuntimeListeners,
+    port_from_listen, DbMailPorts, DcloginMailSettings, RuntimeListeners,
 };
 pub use credential_policy::CredentialPolicy;
 pub use data_size::{

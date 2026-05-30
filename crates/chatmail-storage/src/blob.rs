@@ -104,7 +104,7 @@ pub async fn deliver_local_messages(
     Ok(outcome)
 }
 
-async fn link_into_inbox(
+pub(crate) async fn link_into_inbox(
     store: &MailboxStore,
     user: &str,
     msg_id: &str,
@@ -199,6 +199,51 @@ pub async fn read_blob_known(
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(ChatmailError::from(e)),
         }
+    }
+    Ok(None)
+}
+
+/// Read a byte range of a blob whose maildir filename is already known, without materializing the
+/// whole file in RAM.
+///
+/// IMAP `BODY[]<offset.count>` partial fetches (RFC 3501 §6.4.5) are common for large media: a
+/// client streams a multi-MB photo/video in chunks. The original full-`fs::read` path allocated
+/// the entire body per request — 60 concurrent recipients × a 12 MB video is ~720 MB of transient
+/// allocation. Seeking and reading only the requested window keeps memory proportional to the
+/// chunk size. `offset` past EOF yields an empty slice (RFC-permitted); `count = None` reads to
+/// EOF. Returns `Ok(None)` when the file is not where the listing said (caller falls back).
+pub async fn read_blob_range_known(
+    store: &MailboxStore,
+    user: &str,
+    mailbox: &str,
+    filename: &str,
+    offset: u64,
+    count: Option<u64>,
+) -> Result<Option<Vec<u8>>> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+    let paths = store.maildir_for_mailbox(user, mailbox);
+    for dir in [&paths.new, &paths.cur] {
+        let mut file = match tokio::fs::File::open(dir.join(filename)).await {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(ChatmailError::from(e)),
+        };
+        let len = file.metadata().await.map_err(ChatmailError::from)?.len();
+        if offset >= len {
+            return Ok(Some(Vec::new()));
+        }
+        file.seek(std::io::SeekFrom::Start(offset))
+            .await
+            .map_err(ChatmailError::from)?;
+        let to_read = match count {
+            Some(c) => c.min(len - offset),
+            None => len - offset,
+        };
+        let mut buf = vec![0u8; to_read as usize];
+        file.read_exact(&mut buf)
+            .await
+            .map_err(ChatmailError::from)?;
+        return Ok(Some(buf));
     }
     Ok(None)
 }
@@ -342,6 +387,51 @@ mod tests {
             .await
             .unwrap();
         assert!(missing.is_none());
+    }
+
+    /// P10-UT07: range reads return the exact window and clamp past-EOF / oversized counts.
+    #[tokio::test]
+    async fn p10_ut07_read_blob_range_known() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = MailboxStore::new(tmp.path());
+        let body: Vec<u8> = (0u16..=255).map(|b| b as u8).collect();
+        write_blob(&store, "u@test", "rng", &body).await.unwrap();
+
+        // Window in the middle.
+        let mid = read_blob_range_known(&store, "u@test", "INBOX", "rng", 10, Some(20))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(mid, &body[10..30]);
+
+        // Count past EOF is clamped to the remaining bytes.
+        let tail = read_blob_range_known(&store, "u@test", "INBOX", "rng", 250, Some(1000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(tail, &body[250..]);
+
+        // Offset past EOF yields an empty slice (RFC-permitted), not an error.
+        let empty = read_blob_range_known(&store, "u@test", "INBOX", "rng", 999, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(empty.is_empty());
+
+        // count = None reads to EOF.
+        let to_eof = read_blob_range_known(&store, "u@test", "INBOX", "rng", 200, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(to_eof, &body[200..]);
+
+        // Unknown filename → None (caller falls back).
+        assert!(
+            read_blob_range_known(&store, "u@test", "INBOX", "nope", 0, None)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     /// P10-UT03: a single recipient failure in the fan-out does not drop the message for the

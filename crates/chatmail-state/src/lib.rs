@@ -36,7 +36,7 @@ use tokio::sync::Mutex;
 
 pub use auth::AuthCache;
 pub use events::{EventBus, NewMessageEvent};
-pub use flusher::{flush_federation_stats, start_flusher, FlusherHandle};
+pub use flusher::{flush_federation_stats, flush_modseq, start_flusher, FlusherHandle};
 pub use listener_ports::{ListenerPorts, ListenerPortsStore};
 pub use message_size::MessageSizeLimit;
 pub use policy::{FederationPolicyCache, PolicyMode};
@@ -116,10 +116,18 @@ impl AppState {
         self.federation_policy.hydrate(pool).await?;
         self.federation_silent_dismiss.hydrate(pool).await?;
         self.federation_tracker.hydrate(pool).await?;
+        // Seed durable INBOX modseq so change-ids stay monotonic across restarts.
+        for (user, modseq) in chatmail_db::load_all_modseq(pool).await? {
+            self.events.seed_inbox_version(&user, modseq.max(0) as u64);
+        }
         Ok(())
     }
 
     pub fn start_flusher(&self, pool: DbPool) -> FlusherHandle {
-        start_flusher(pool, Arc::clone(&self.federation_tracker))
+        start_flusher(
+            pool,
+            Arc::clone(&self.federation_tracker),
+            Arc::clone(&self.events),
+        )
     }
 }

@@ -24,6 +24,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::debug;
 
+use crate::events::EventBus;
 use crate::tracker::FederationTracker;
 
 pub struct FlusherHandle {
@@ -38,7 +39,11 @@ impl FlusherHandle {
     }
 }
 
-pub fn start_flusher(pool: DbPool, tracker: Arc<FederationTracker>) -> FlusherHandle {
+pub fn start_flusher(
+    pool: DbPool,
+    tracker: Arc<FederationTracker>,
+    events: Arc<EventBus>,
+) -> FlusherHandle {
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
 
     let task = tokio::spawn(async move {
@@ -53,10 +58,14 @@ pub fn start_flusher(pool: DbPool, tracker: Arc<FederationTracker>) -> FlusherHa
                     } else {
                         debug!("federation stats flushed to database");
                     }
+                    if let Err(e) = flush_modseq(&pool, &events).await {
+                        tracing::warn!(error = %e, "mailbox modseq flush failed");
+                    }
                 }
                 _ = shutdown_rx.changed() => {
                     if *shutdown_rx.borrow() {
                         let _ = flush_federation_stats(&pool, &tracker).await;
+                        let _ = flush_modseq(&pool, &events).await;
                         break;
                     }
                 }
@@ -65,6 +74,19 @@ pub fn start_flusher(pool: DbPool, tracker: Arc<FederationTracker>) -> FlusherHa
     });
 
     FlusherHandle { shutdown_tx, task }
+}
+
+/// Persist the in-memory INBOX versions as durable modseq high-water marks.
+pub async fn flush_modseq(pool: &DbPool, events: &EventBus) -> Result<()> {
+    let snapshot: Vec<(String, i64)> = events
+        .inbox_version_snapshot()
+        .into_iter()
+        .map(|(user, version)| (user, version.min(i64::MAX as u64) as i64))
+        .collect();
+    if snapshot.is_empty() {
+        return Ok(());
+    }
+    chatmail_db::upsert_modseq(pool, &snapshot).await
 }
 
 pub async fn flush_federation_stats(pool: &DbPool, tracker: &FederationTracker) -> Result<()> {
@@ -114,6 +136,7 @@ pub async fn flush_federation_stats(pool: &DbPool, tracker: &FederationTracker) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::events::EventBus;
     use crate::tracker::FederationTracker;
     use chatmail_db::{db_fetch_one, init_memory_db};
 
@@ -136,5 +159,32 @@ mod tests {
         .unwrap();
 
         assert_eq!(row, (1, 1, 1));
+    }
+
+    /// P10-UT09: INBOX versions flush to the durable modseq table and reload monotonically.
+    #[tokio::test]
+    async fn p10_ut09_modseq_flush_and_seed() {
+        let pool = init_memory_db().await.unwrap();
+        let bus = EventBus::new();
+        bus.bump_inbox_version("u@test");
+        bus.bump_inbox_version("u@test");
+        let before = bus.inbox_version("u@test");
+        assert_eq!(before, 2);
+
+        flush_modseq(&pool, &bus).await.unwrap();
+
+        // A fresh process (new EventBus) seeds from the persisted high-water mark.
+        let restarted = EventBus::new();
+        for (user, modseq) in chatmail_db::load_all_modseq(&pool).await.unwrap() {
+            restarted.seed_inbox_version(&user, modseq as u64);
+        }
+        assert_eq!(
+            restarted.inbox_version("u@test"),
+            before,
+            "modseq is monotonic across restart"
+        );
+        // Subsequent bumps continue above the seed (never reuse a change-id).
+        restarted.bump_inbox_version("u@test");
+        assert_eq!(restarted.inbox_version("u@test"), before + 1);
     }
 }

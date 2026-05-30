@@ -22,8 +22,8 @@ use axum::Router;
 use chatmail_config::{
     effective_http_plain_listen, effective_http_tls_listen, effective_imap_plain_listen,
     effective_imap_tls_listen, effective_smtp_listen, effective_submission_plain_listen,
-    effective_submission_tls_listen, effective_tls_pem_paths, listeners_need_tls_cert,
-    AppConfig, RuntimeListeners,
+    effective_submission_tls_listen, effective_tls_pem_paths, listeners_need_tls_cert, AppConfig,
+    RuntimeListeners,
 };
 use chatmail_db::{load_mail_port_overrides, DbPool};
 use chatmail_delivery::{start_outbound_queue, DeliveryContext};

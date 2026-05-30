@@ -186,14 +186,12 @@ mod tests {
     #[tokio::test]
     async fn hydrate_loads_blocklist_and_jit_flag() {
         let pool = init_memory_db().await.unwrap();
-        blocklist::block_user(&pool, "bad@test", "test").await.unwrap();
-        chatmail_db::set_setting(
-            &pool,
-            settings_keys::JIT_REGISTRATION_ENABLED,
-            "false",
-        )
-        .await
-        .unwrap();
+        blocklist::block_user(&pool, "bad@test", "test")
+            .await
+            .unwrap();
+        chatmail_db::set_setting(&pool, settings_keys::JIT_REGISTRATION_ENABLED, "false")
+            .await
+            .unwrap();
         chatmail_db::set_setting(&pool, settings_keys::REGISTRATION_OPEN, "false")
             .await
             .unwrap();

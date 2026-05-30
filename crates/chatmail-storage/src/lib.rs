@@ -16,16 +16,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 pub mod blob;
+pub mod external_store;
 pub mod inbox;
 pub mod maildir;
 pub mod maildir_message;
 pub mod purge;
 
+pub use external_store::{ExternalKey, ExternalStore, FsStore};
 pub use inbox::{list_inbox, InboxEntry};
 
 pub use blob::{
-    delete_blob, deliver_local_messages, read_blob, read_blob_known, write_blob,
-    write_blob_mailbox, DeliveryOutcome,
+    delete_blob, deliver_local_messages, read_blob, read_blob_known, read_blob_range_known,
+    write_blob, write_blob_mailbox, DeliveryOutcome,
 };
 pub use maildir::{mailbox_exists, MailboxStore, MaildirPaths};
 pub use maildir_message::{

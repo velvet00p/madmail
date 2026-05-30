@@ -25,7 +25,7 @@ use chatmail_pgp::{enforce_encryption, EnforceOptions};
 use chatmail_state::{AppState, NewMessageEvent};
 use chatmail_storage::{
     copy_message, expunge_deleted, list_mailbox_messages, mailbox_exists, move_message, read_blob,
-    read_blob_known, store_add_flags, write_blob_mailbox, StoredMessage,
+    read_blob_known, read_blob_range_known, store_add_flags, write_blob_mailbox, StoredMessage,
 };
 use chatmail_turn::TurnDiscovery;
 use chatmail_types::{ChatmailError, Result};
@@ -36,7 +36,14 @@ use tokio::sync::broadcast;
 use tokio::sync::broadcast::error::RecvError;
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
-use tracing::debug;
+use tracing::{debug, warn};
+
+/// Max time a single IDLE notification may spend writing unsolicited updates to the client socket.
+/// Per-subscriber egress isolation (Stalwart push-manager pattern): a half-open / wedged TCP
+/// connection is dropped instead of pinning its IDLE task (and its broadcast receiver) forever.
+/// Generous so it only ever trips on a genuinely dead socket — Delta Chat's EXISTS/RECENT writes
+/// are a few bytes.
+const IDLE_EMIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 #[derive(Clone)]
 pub struct ImapSessionConfig {
@@ -517,6 +524,39 @@ impl ImapSession {
         read_blob(&self.ctx.mailbox_store, user, mailbox, &m.id).await
     }
 
+    /// Read a byte range of a message body (for `BODY[]<offset.count>` partial fetches), preferring
+    /// the known filename and falling back to slicing a full read if the entry moved.
+    async fn read_message_body_range(
+        &self,
+        user: &str,
+        mailbox: &str,
+        m: &MailMessage,
+        offset: u64,
+        count: Option<u64>,
+    ) -> Result<Vec<u8>> {
+        if !m.filename.is_empty() {
+            if let Some(bytes) = read_blob_range_known(
+                &self.ctx.mailbox_store,
+                user,
+                mailbox,
+                &m.filename,
+                offset,
+                count,
+            )
+            .await?
+            {
+                return Ok(bytes);
+            }
+        }
+        let full = read_blob(&self.ctx.mailbox_store, user, mailbox, &m.id).await?;
+        let start = (offset as usize).min(full.len());
+        let end = match count {
+            Some(c) => (start + c as usize).min(full.len()),
+            None => full.len(),
+        };
+        Ok(full[start..end].to_vec())
+    }
+
     /// Serve a FETCH response, writing the result directly to the connection writer.
     ///
     /// The response is assembled into a single `Vec<u8>` and written with one `write_all` +
@@ -537,6 +577,11 @@ impl ImapSession {
         W: AsyncWriteExt + Unpin,
     {
         let mode = fetch_response_mode(args);
+        let partial = if mode == FetchResponseMode::FullBody {
+            parse_body_partial(args)
+        } else {
+            None
+        };
         // Reload INBOX so FETCH after SMTP delivery sees new messages on this connection.
         let mailbox = self
             .selected_mailbox
@@ -557,19 +602,39 @@ impl ImapSession {
                 .unwrap_or(m.uid);
             if mode == FetchResponseMode::FullBody {
                 let mailbox = self.selected_mailbox.as_deref().unwrap_or("INBOX");
-                let body = self.read_message_body(user, mailbox, m).await?;
-                out.extend_from_slice(
-                    format!(
-                        "* {seq} FETCH (UID {} RFC822.SIZE {} BODY[] {{{}}}\r\n",
-                        m.uid,
-                        m.size,
-                        body.len()
-                    )
-                    .as_bytes(),
-                );
-                out.extend_from_slice(&body);
-                // Literal ends; close FETCH list (no CRLF between literal and ')' — go-imap compat).
-                out.extend_from_slice(b")\r\n");
+                if let Some((offset, count)) = partial {
+                    // Partial body fetch: stream only the requested window and echo the origin
+                    // octet in the section spec (RFC 3501 `BODY[]<origin> {len}`).
+                    let chunk = self
+                        .read_message_body_range(user, mailbox, m, offset, count)
+                        .await?;
+                    out.extend_from_slice(
+                        format!(
+                            "* {seq} FETCH (UID {} RFC822.SIZE {} BODY[]<{}> {{{}}}\r\n",
+                            m.uid,
+                            m.size,
+                            offset,
+                            chunk.len()
+                        )
+                        .as_bytes(),
+                    );
+                    out.extend_from_slice(&chunk);
+                    out.extend_from_slice(b")\r\n");
+                } else {
+                    let body = self.read_message_body(user, mailbox, m).await?;
+                    out.extend_from_slice(
+                        format!(
+                            "* {seq} FETCH (UID {} RFC822.SIZE {} BODY[] {{{}}}\r\n",
+                            m.uid,
+                            m.size,
+                            body.len()
+                        )
+                        .as_bytes(),
+                    );
+                    out.extend_from_slice(&body);
+                    // Literal ends; close FETCH list (no CRLF between literal and ')' — go-imap compat).
+                    out.extend_from_slice(b")\r\n");
+                }
             } else if mode == FetchResponseMode::Headers {
                 let mailbox = self.selected_mailbox.as_deref().unwrap_or("INBOX");
                 let body = self.read_message_body(user, mailbox, m).await?;
@@ -790,11 +855,34 @@ impl ImapSession {
                     match ev {
                         Ok(ev) => {
                             debug!(%user, msg_id = %ev.msg_id, "IMAP IDLE delivery event");
-                            self.emit_idle_updates(writer, &user).await?;
+                            match tokio::time::timeout(
+                                IDLE_EMIT_TIMEOUT,
+                                self.emit_idle_updates(writer, &user),
+                            )
+                            .await
+                            {
+                                Ok(r) => r?,
+                                Err(_) => {
+                                    warn!(%user, "IMAP IDLE notification write timed out; dropping stuck connection");
+                                    break;
+                                }
+                            }
                         }
                         Err(RecvError::Lagged(n)) => {
+                            self.ctx.events.record_lag();
                             debug!(%user, skipped = n, "IMAP IDLE event bus lagged, resyncing");
-                            self.emit_idle_updates(writer, &user).await?;
+                            match tokio::time::timeout(
+                                IDLE_EMIT_TIMEOUT,
+                                self.emit_idle_updates(writer, &user),
+                            )
+                            .await
+                            {
+                                Ok(r) => r?,
+                                Err(_) => {
+                                    warn!(%user, "IMAP IDLE resync write timed out; dropping stuck connection");
+                                    break;
+                                }
+                            }
                         }
                         Err(RecvError::Closed) => break,
                     }
@@ -1330,6 +1418,24 @@ fn fetch_response_mode(args: &str) -> FetchResponseMode {
         return FetchResponseMode::FullBody;
     }
     FetchResponseMode::Metadata
+}
+
+/// Parse an RFC 3501 partial-fetch suffix `BODY[]<offset[.count]>` (or `BODY.PEEK[]<...>`).
+/// Returns `(offset, Some(count))` for `<o.c>`, `(offset, None)` for `<o>`, or `None` when the
+/// client requested the whole body. Only the empty-section form `BODY[]` is supported for partials
+/// here (matching what this server serves); other sections fall through to their normal handling.
+fn parse_body_partial(args: &str) -> Option<(u64, Option<u64>)> {
+    let marker_pos = ["BODY.PEEK[]", "BODY[]"]
+        .iter()
+        .find_map(|m| args.find(m).map(|p| p + m.len()))?;
+    let rest = &args[marker_pos..];
+    let inner = rest.strip_prefix('<')?;
+    let end = inner.find('>')?;
+    let spec = &inner[..end];
+    match spec.split_once('.') {
+        Some((o, c)) => Some((o.trim().parse().ok()?, Some(c.trim().parse().ok()?))),
+        None => Some((spec.trim().parse().ok()?, None)),
+    }
 }
 
 fn extract_headers(body: &[u8]) -> &[u8] {
@@ -1990,6 +2096,55 @@ mod integration_tests {
         let literal_start = mpos + marker.len() + brace + 1 + 2;
         let literal = &resp[literal_start..literal_start + len];
         assert_eq!(literal, &body[..], "binary body round-trips byte-for-byte");
+    }
+
+    /// P10-UT07: `BODY[]<offset.count>` partial fetch returns only the requested window with the
+    /// origin octet echoed, and the bytes match the corresponding slice of the full body.
+    #[tokio::test]
+    async fn p10_ut07_partial_body_fetch_returns_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = chatmail_db::init_memory_db().await.unwrap();
+        let hash = hash_password("pw").unwrap();
+        chatmail_db::passwords::create_user(&pool, "u@test", &hash)
+            .await
+            .unwrap();
+        let ctx = Arc::new(AppState::new(dir.path()));
+
+        let mut body: Vec<u8> = b"From: u@test\r\n\r\n".to_vec();
+        body.extend((0u16..=255).map(|b| b as u8));
+        write_blob(&ctx.mailbox_store, "u@test", "m1", &body)
+            .await
+            .unwrap();
+
+        let addr = spawn_imap_server(pool, ctx).await;
+        let mut stream = TcpStream::connect(addr).await.unwrap();
+        let _ = read_until(&mut stream, b"IMAP4rev1 ready").await;
+        stream.write_all(b"a001 LOGIN u@test pw\r\n").await.unwrap();
+        let _ = read_until(&mut stream, b"a001 OK").await;
+        stream.write_all(b"a002 SELECT INBOX\r\n").await.unwrap();
+        let _ = read_until(&mut stream, b"a002 OK").await;
+        // Request 32 bytes starting at offset 16.
+        stream
+            .write_all(b"a003 FETCH 1 BODY[]<16.32>\r\n")
+            .await
+            .unwrap();
+        let resp = read_until(&mut stream, b"a003 OK FETCH completed\r\n").await;
+
+        let marker = b"BODY[]<16> {";
+        let mpos = resp
+            .windows(marker.len())
+            .position(|w| w == marker)
+            .expect("partial section spec echoes origin octet");
+        let after = &resp[mpos + marker.len()..];
+        let brace = after.iter().position(|&b| b == b'}').unwrap();
+        let len: usize = std::str::from_utf8(&after[..brace])
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(len, 32, "partial literal length matches requested count");
+        let literal_start = mpos + marker.len() + brace + 1 + 2;
+        let literal = &resp[literal_start..literal_start + len];
+        assert_eq!(literal, &body[16..48], "partial bytes match the body slice");
     }
 
     async fn imap_dialog_with_discovery(

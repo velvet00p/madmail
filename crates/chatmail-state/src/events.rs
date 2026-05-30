@@ -45,6 +45,11 @@ pub struct EventBus {
     /// the next listing, but the client missed the instant wakeup. Surfaced for observability so
     /// operators can spot subscription-window losses during bursts instead of them being silent.
     no_receiver_drops: AtomicU64,
+    /// Count of subscriber lag events (a receiver fell `USER_CHANNEL_CAPACITY` behind and took the
+    /// `Lagged` resync path). Per-subscriber isolation means one slow client never blocks the
+    /// publisher or other subscribers; this gauge lets operators tell whether the burst buffer is
+    /// undersized for the live load (sustained growth ⇒ raise `USER_CHANNEL_CAPACITY`).
+    lagged_events: AtomicU64,
 }
 
 /// Per-user IDLE notification fan-out buffer.
@@ -62,6 +67,7 @@ impl EventBus {
             users: DashMap::new(),
             inbox_versions: DashMap::new(),
             no_receiver_drops: AtomicU64::new(0),
+            lagged_events: AtomicU64::new(0),
         }
     }
 
@@ -81,6 +87,27 @@ impl EventBus {
             .entry(key)
             .or_insert_with(|| AtomicU64::new(0))
             .fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// Seed a user's INBOX version from a persisted modseq at boot, never lowering an existing
+    /// value. Keeps the change-id monotonic across restarts (the CONDSTORE/QRESYNC invariant).
+    pub fn seed_inbox_version(&self, username: &str, version: u64) {
+        let key = username.to_ascii_lowercase();
+        let entry = self
+            .inbox_versions
+            .entry(key)
+            .or_insert_with(|| AtomicU64::new(0));
+        if entry.load(Ordering::Acquire) < version {
+            entry.store(version, Ordering::Release);
+        }
+    }
+
+    /// Snapshot all `(username, version)` pairs for durable persistence by the state flusher.
+    pub fn inbox_version_snapshot(&self) -> Vec<(String, u64)> {
+        self.inbox_versions
+            .iter()
+            .map(|e| (e.key().clone(), e.value().load(Ordering::Acquire)))
+            .collect()
     }
 
     fn user_sender(&self, username: &str) -> broadcast::Sender<NewMessageEvent> {
@@ -121,6 +148,16 @@ impl EventBus {
         self.no_receiver_drops.load(Ordering::Relaxed)
     }
 
+    /// Record that a subscriber took the `Lagged` resync path (call sites: IMAP IDLE / WebIMAP).
+    pub fn record_lag(&self) {
+        self.lagged_events.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Total subscriber lag events since boot (observability for burst-buffer sizing).
+    pub fn lagged_events(&self) -> u64 {
+        self.lagged_events.load(Ordering::Relaxed)
+    }
+
     /// Count of currently-subscribed IDLE/WebIMAP receivers for `username`.
     pub fn subscriber_count(&self, username: &str) -> usize {
         let key = username.to_ascii_lowercase();
@@ -128,6 +165,11 @@ impl EventBus {
             .get(&key)
             .map(|s| s.receiver_count())
             .unwrap_or(0)
+    }
+
+    /// Total live IDLE/WebIMAP subscribers across all users (push-manager gauge).
+    pub fn total_subscribers(&self) -> usize {
+        self.users.iter().map(|s| s.receiver_count()).sum()
     }
 
     pub fn subscribe(&self, username: &str) -> broadcast::Receiver<NewMessageEvent> {
@@ -226,5 +268,25 @@ mod tests {
         assert_eq!(rx.recv().await.unwrap().msg_id, "after-lag");
         // No drops: there was always a live subscriber.
         assert_eq!(bus.no_receiver_drops(), 0);
+    }
+
+    /// P10-UT08: the push manager exposes live subscriber and lag gauges, and per-user broadcast
+    /// keeps one user's notifications isolated from another's subscriber count.
+    #[tokio::test]
+    async fn p10_ut08_push_manager_gauges() {
+        let bus = EventBus::new();
+        assert_eq!(bus.total_subscribers(), 0);
+        assert_eq!(bus.lagged_events(), 0);
+
+        let _a1 = bus.subscribe("a@test");
+        let _a2 = bus.subscribe("a@test");
+        let _b1 = bus.subscribe("b@test");
+        assert_eq!(bus.subscriber_count("a@test"), 2);
+        assert_eq!(bus.subscriber_count("b@test"), 1);
+        assert_eq!(bus.total_subscribers(), 3);
+
+        bus.record_lag();
+        bus.record_lag();
+        assert_eq!(bus.lagged_events(), 2);
     }
 }

@@ -112,11 +112,7 @@ pub fn build_autoconfig_xml(params: &AutoconfigParams) -> String {
 
     let mut incoming = String::new();
     if params.has_imap_tls {
-        incoming.push_str(&incoming_server(
-            &host,
-            &params.imap_port_tls,
-            "SSL",
-        ));
+        incoming.push_str(&incoming_server(&host, &params.imap_port_tls, "SSL"));
     }
     if params.has_imap_plain {
         incoming.push_str(&incoming_server(
@@ -133,11 +129,7 @@ pub fn build_autoconfig_xml(params: &AutoconfigParams) -> String {
 
     let mut outgoing = String::new();
     if params.has_submission_tls {
-        outgoing.push_str(&outgoing_server(
-            &host,
-            &params.smtp_port_tls,
-            "SSL",
-        ));
+        outgoing.push_str(&outgoing_server(&host, &params.smtp_port_tls, "SSL"));
     }
     if params.has_submission_plain {
         outgoing.push_str(&outgoing_server(
@@ -220,8 +212,7 @@ mod tests {
             http_plain_addr: None,
             http_tls_addr: None,
         };
-        let params =
-            AutoconfigParams::from_mail_settings("[192.0.2.1]", &mail, Some(&rt));
+        let params = AutoconfigParams::from_mail_settings("[192.0.2.1]", &mail, Some(&rt));
         let xml = build_autoconfig_xml(&params);
         assert!(xml.contains("<domain>192.0.2.1</domain>"));
         assert!(xml.contains("<hostname>192.0.2.1</hostname>"));

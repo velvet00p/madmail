@@ -119,7 +119,9 @@ pub async fn authenticate(ctx: &AuthContext, username: &str, password: &str) -> 
     let hash = hash_password(password)?;
     passwords::create_user(&ctx.pool, &user, &hash).await?;
     ctx.state.auth.insert(&user, &hash);
-    ctx.state.auth.record_verified(&user, password_sha256(password));
+    ctx.state
+        .auth
+        .record_verified(&user, password_sha256(password));
     ctx.state.mailbox_store.init_user_dir(&user).await?;
     registration_tokens::ensure_new_account_quota(&ctx.pool, &user).await?;
 

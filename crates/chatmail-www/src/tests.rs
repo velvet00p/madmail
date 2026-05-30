@@ -455,7 +455,10 @@ async fn new_account_returns_dclogin_url_with_ssl_hints() {
     let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let email = v.get("email").and_then(|e| e.as_str()).expect("email");
-    let _password = v.get("password").and_then(|p| p.as_str()).expect("password");
+    let _password = v
+        .get("password")
+        .and_then(|p| p.as_str())
+        .expect("password");
     let url = v
         .get("dclogin_url")
         .and_then(|u| u.as_str())

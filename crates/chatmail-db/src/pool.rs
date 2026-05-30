@@ -315,6 +315,12 @@ async fn apply_postgres_extension_tables(pool: &sqlx::PgPool) -> Result<()> {
         .execute(pool)
         .await
         .map_err(ChatmailError::from)?;
+    const MAILBOX_MODSEQ: &str =
+        include_str!("../migrations/postgres/20240601000000_mailbox_modseq.sql");
+    sqlx::query(MAILBOX_MODSEQ)
+        .execute(pool)
+        .await
+        .map_err(ChatmailError::from)?;
     Ok(())
 }
 

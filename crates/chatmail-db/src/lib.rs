@@ -25,6 +25,7 @@ pub mod maintenance;
 pub mod message_retention;
 pub mod message_stats;
 pub mod models;
+pub mod modseq;
 pub mod passwords;
 pub mod pool;
 pub mod quota_defaults;
@@ -68,12 +69,12 @@ pub use message_stats::{
     record_inbound_delivery, record_smtp_accepted, snapshot as message_stats_snapshot,
     start_flush_task as start_message_stats_flush,
 };
+pub use modseq::{load_all_modseq, upsert_modseq};
 pub use pool::{connect_database, pg_sql, DbBackend, DbPool};
 pub use quota_defaults::resolve_default_quota_bytes;
 pub use registration_tokens::{
     attach_registration_token, ensure_new_account_quota, list_login_settled_usernames,
-    record_first_login,
-    reserve_registration_token, validate_registration_token, FirstLoginOutcome,
+    record_first_login, reserve_registration_token, validate_registration_token, FirstLoginOutcome,
 };
 pub use settings::{
     delete_setting, get_bool_setting, get_enabled_setting, get_setting, get_settings_many,

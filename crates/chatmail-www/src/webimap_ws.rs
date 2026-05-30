@@ -122,7 +122,10 @@ pub async fn run(socket: WebSocket, st: WwwState, q: WsQuery) -> Result<(), Stri
                 ev = events.recv() => {
                     match ev {
                         Ok(_) => {}
-                        Err(RecvError::Lagged(_)) => continue,
+                        Err(RecvError::Lagged(_)) => {
+                            st_push.app.events.record_lag();
+                            continue;
+                        }
                         Err(RecvError::Closed) => break,
                     }
                 }
