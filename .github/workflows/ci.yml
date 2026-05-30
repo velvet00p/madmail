@@ -14,14 +14,13 @@ env:
 
 jobs:
   semantic-release:
-    name: Semantic Release (version only, no commit/push)
+    name: Semantic Release
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # semantic-release always runs `git push --dry-run` to verify repo access, even
-    # without @semantic-release/git. Read-only `contents: read` fails that check.
-    # No git/github plugins are configured, so nothing is actually pushed.
     permissions:
       contents: write
+      issues: write
+      pull-requests: write
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
     steps:
@@ -34,10 +33,17 @@ jobs:
           node-version: "24"
           cache: npm
 
+      - name: Configure git for semantic-release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Install root dependencies (semantic-release)
         run: npm ci
 
-      - name: Compute chatmail version (no git commit, no GitHub release)
+      - name: Run semantic-release (bump, commit, tag, push, GitHub release)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release --extends ./.github/releaserc.ci.json
 
       - name: Ensure .version exists when no release is cut
@@ -89,7 +95,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           submodules: recursive
+
+      - name: Sync version bump commit from semantic-release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: git pull origin main
 
       - name: Download computed version files
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

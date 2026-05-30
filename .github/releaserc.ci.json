@@ -17,6 +17,20 @@
             {
                 "prepareCmd": "echo ${nextRelease.version} > .version && npm version ${nextRelease.version} --no-git-tag-version && sed -i '0,/^version = \"/s/^version = \"[^\"]*\"/version = \"'\"${nextRelease.version}\"'\"/' Cargo.toml"
             }
-        ]
+        ],
+        [
+            "@semantic-release/git",
+            {
+                "assets": [
+                    "package.json",
+                    "package-lock.json",
+                    "CHANGELOG.md",
+                    ".version",
+                    "Cargo.toml"
+                ],
+                "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+            }
+        ],
+        "@semantic-release/github"
     ]
 }
