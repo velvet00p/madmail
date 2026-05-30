@@ -1,3 +1,10 @@
+## [2.2.1](https://github.com/themadorg/madmail/compare/v2.2.0...v2.2.1) (2026-05-30)
+
+
+### Bug Fixes
+
+* **release:** Bump chatmail version to 9.9.9 in Cargo.lock ([6206e04](https://github.com/themadorg/madmail/commit/6206e04ddfdc28f87e77b0422bbc0ad87eb0a372))
+
 # [2.2.0](https://github.com/themadorg/madmail/compare/v2.1.0...v2.2.0) (2026-05-30)
 
 
