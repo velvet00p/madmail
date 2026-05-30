@@ -17,6 +17,11 @@ jobs:
     name: Semantic Release (version only, no commit/push)
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # semantic-release always runs `git push --dry-run` to verify repo access, even
+    # without @semantic-release/git. Read-only `contents: read` fails that check.
+    # No git/github plugins are configured, so nothing is actually pushed.
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
     steps:
