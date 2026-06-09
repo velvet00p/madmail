@@ -101,6 +101,13 @@ pub async fn run(args: Args) -> Result<()> {
         info!("chatmail-rs starting (Phases 3–8: auth, SMTP, IMAP, federation, delivery)");
     }
 
+    #[cfg(feature = "pprof")]
+    {
+        // Benchmark builds only: `cargo build -p chatmail --features pprof`
+        // Access via: curl 'http://127.0.0.1:6060/debug/pprof/flamegraph?seconds=15'
+        crate::profiling::start_pprof_server().await;
+    }
+
     let _supervisor = if !args.boot_once {
         let (supervisor, _reload_tx) = crate::servers::start_servers(
             pool.clone(),

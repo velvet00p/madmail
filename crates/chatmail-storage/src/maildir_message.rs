@@ -21,7 +21,7 @@ use std::time::SystemTime;
 use chatmail_types::{ChatmailError, Result};
 use tokio::fs;
 
-use crate::maildir::{fsync_dir, MailboxStore};
+use crate::maildir::MailboxStore;
 
 /// Parsed maildir filename flags (`:2,XY` suffix).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -64,6 +64,8 @@ impl MaildirFlags {
 /// One message on disk (maildir `new/` or `cur/`).
 #[derive(Debug, Clone)]
 pub struct StoredMessage {
+    /// Stable IMAP UID assigned by the persistent uidlist (never reused, monotonic per mailbox).
+    pub uid: u32,
     pub base_id: String,
     pub filename: String,
     pub size: u64,
@@ -90,47 +92,32 @@ pub fn maildir_filename(base_id: &str, flags: &MaildirFlags) -> String {
     }
 }
 
-/// List messages in a mailbox, oldest first (stable UIDs = 1..N).
+/// List messages in a mailbox, ordered by stable UID (oldest first).
+///
+/// Backed by the persistent [`crate::uidlist`] index: an unchanged mailbox is served from the
+/// in-memory [`crate::maildir_cache`] fast path (no `readdir`), and on a real change the uidlist
+/// reconciles the directory while only statting never-before-seen files.
 pub async fn list_mailbox_messages(
     store: &MailboxStore,
     user: &str,
     mailbox: &str,
 ) -> Result<Vec<StoredMessage>> {
     let paths = store.maildir_for_mailbox(user, mailbox);
-    let mut items = Vec::new();
-    for (in_cur, dir) in [(false, &paths.new), (true, &paths.cur)] {
-        if !dir.exists() {
-            continue;
-        }
-        let mut rd = fs::read_dir(dir).await?;
-        while let Some(ent) = rd.next_entry().await? {
-            if !ent.file_type().await?.is_file() {
-                continue;
-            }
-            let filename = ent.file_name().to_string_lossy().into_owned();
-            let (base_id, mut flags) = split_maildir_filename(&filename);
-            if in_cur && !flags.seen {
-                flags.seen = true;
-            }
-            let meta = ent.metadata().await?;
-            items.push((
-                meta.modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_nanos())
-                    .unwrap_or(0),
-                StoredMessage {
-                    base_id: base_id.to_string(),
-                    filename,
-                    size: meta.len(),
-                    internal_date: meta.modified().unwrap_or_else(|_| SystemTime::now()),
-                    flags,
-                },
-            ));
-        }
+    if let Some(cached) = store
+        .list_cache()
+        .get_if_fresh(user, mailbox, &paths.new, &paths.cur)
+        .await
+    {
+        return Ok(cached);
     }
-    items.sort_by_key(|(mtime, _)| *mtime);
-    Ok(items.into_iter().map(|(_, m)| m).collect())
+
+    let new_mtime = crate::maildir_cache::MaildirListCache::dir_mtime(&paths.new).await;
+    let cur_mtime = crate::maildir_cache::MaildirListCache::dir_mtime(&paths.cur).await;
+    let messages = store.uidlist().sync(user, mailbox, &paths).await?;
+    store
+        .list_cache()
+        .store(user, mailbox, new_mtime, cur_mtime, messages.clone());
+    Ok(messages)
 }
 
 async fn locate_message(
@@ -184,6 +171,7 @@ pub async fn store_add_flags(
     if add_deleted {
         flags.deleted = true;
         fs::remove_file(&path).await?;
+        store.invalidate_mailbox_listing(user, mailbox);
         return Ok(flags);
     }
     let paths = store.maildir_for_mailbox(user, mailbox);
@@ -201,6 +189,7 @@ pub async fn store_add_flags(
         };
         fs::rename(&path, &other).await?;
     }
+    store.invalidate_mailbox_listing(user, mailbox);
     Ok(flags)
 }
 
@@ -222,7 +211,9 @@ pub async fn move_message(
     };
     fs::create_dir_all(target_dir).await?;
     fs::rename(&path, target_dir.join(&name)).await?;
-    fsync_dir(target_dir).await?;
+    store.fsync().commit_directory(target_dir).await?;
+    store.invalidate_mailbox_listing(user, from_mailbox);
+    store.invalidate_mailbox_listing(user, to_mailbox);
     Ok(())
 }
 
@@ -264,10 +255,10 @@ async fn write_message(
 
     let mut file = fs::File::create(&tmp_path).await?;
     tokio::io::AsyncWriteExt::write_all(&mut file, body).await?;
-    file.sync_data().await?;
+    store.fsync().sync_file_data(&mut file).await?;
     fs::rename(&tmp_path, &final_path).await?;
-    // Make the directory entry durable before the caller notifies clients (APPEND / COPY).
-    fsync_dir(target_dir).await?;
+    store.fsync().commit_directory(target_dir).await?;
+    store.invalidate_mailbox_listing(user, mailbox);
     Ok(final_path)
 }
 
@@ -298,6 +289,7 @@ pub async fn expunge_deleted(store: &MailboxStore, user: &str, mailbox: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::write_blob;
 
     #[test]
     fn maildir_flag_roundtrip() {
@@ -310,5 +302,46 @@ mod tests {
         let (base, parsed) = split_maildir_filename(&name);
         assert_eq!(base, "abc");
         assert_eq!(parsed, flags);
+    }
+
+    /// P11-UT14: list_mailbox_messages serves cached listing when mtimes unchanged.
+    #[tokio::test]
+    async fn p11_ut14_list_mailbox_messages_uses_mtime_cache() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = MailboxStore::new(tmp.path());
+        write_blob(&store, "u@test", "m1", b"x").await.unwrap();
+
+        let first = list_mailbox_messages(&store, "u@test", "INBOX")
+            .await
+            .unwrap();
+        assert_eq!(first.len(), 1);
+
+        // Second call hits cache (same dir mtimes).
+        let second = list_mailbox_messages(&store, "u@test", "INBOX")
+            .await
+            .unwrap();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].base_id, first[0].base_id);
+    }
+
+    /// P11-UT23: listing cache is invalidated after a second write.
+    #[tokio::test]
+    async fn p11_ut23_list_cache_invalidated_after_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = MailboxStore::new(tmp.path());
+        write_blob(&store, "u@test", "m1", b"a").await.unwrap();
+        assert_eq!(
+            list_mailbox_messages(&store, "u@test", "INBOX")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+
+        write_blob(&store, "u@test", "m2", b"b").await.unwrap();
+        let after = list_mailbox_messages(&store, "u@test", "INBOX")
+            .await
+            .unwrap();
+        assert_eq!(after.len(), 2);
     }
 }

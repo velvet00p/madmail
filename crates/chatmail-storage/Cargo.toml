@@ -7,7 +7,9 @@ license.workspace = true
 [dependencies]
 chatmail-types = { workspace = true }
 async-trait = { workspace = true }
-tokio = { workspace = true, features = ["fs", "io-util", "rt"] }
+dashmap = { workspace = true }
+sha2 = "0.10"
+tokio = { workspace = true, features = ["fs", "io-util", "rt", "time"] }
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]

@@ -29,7 +29,7 @@ use std::sync::Arc;
 
 use chatmail_config::AppConfig;
 use chatmail_db::DbPool;
-use chatmail_storage::MailboxStore;
+use chatmail_storage::{MailboxStore, StoragePolicy};
 use chatmail_types::Result;
 use dashmap::DashMap;
 use tokio::sync::Mutex;
@@ -87,7 +87,13 @@ impl AppState {
             federation_tracker: Arc::new(FederationTracker::new()),
             federation_policy: Arc::new(FederationPolicyCache::new()),
             federation_silent_dismiss: Arc::new(FederationSilentDismissCache::new()),
-            mailbox_store: Arc::new(MailboxStore::new(state_dir)),
+            mailbox_store: Arc::new(MailboxStore::with_policy(
+                state_dir,
+                StoragePolicy::from_config(
+                    config.mail_fsync.as_deref(),
+                    config.blob_dedup.as_deref(),
+                ),
+            )),
             events: Arc::new(EventBus::new()),
             listener_ports: Arc::new(ListenerPortsStore::new()),
             jit_flights: Arc::new(DashMap::new()),
@@ -129,5 +135,34 @@ impl AppState {
             Arc::clone(&self.federation_tracker),
             Arc::clone(&self.events),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chatmail_storage::FsyncMode;
+
+    /// P11-UT24: AppState wires storage policy from maddy.conf mail_fsync / blob_dedup.
+    #[test]
+    fn p11_ut24_appstate_applies_storage_policy_from_config() {
+        let cfg = AppConfig {
+            mail_fsync: Some("optimized".into()),
+            blob_dedup: Some("off".into()),
+            ..AppConfig::default()
+        };
+
+        let state = AppState::with_quota_and_message_limit(
+            "/tmp/chatmail-test-state",
+            chatmail_config::DEFAULT_QUOTA_BYTES,
+            &cfg,
+        );
+        let policy = state.mailbox_store.policy();
+        assert_eq!(policy.fsync_mode, FsyncMode::Optimized);
+        assert!(!policy.cas_enabled);
+
+        let default = AppState::new("/tmp/chatmail-default");
+        assert_eq!(default.mailbox_store.policy().fsync_mode, FsyncMode::Always);
+        assert!(default.mailbox_store.policy().cas_enabled);
     }
 }

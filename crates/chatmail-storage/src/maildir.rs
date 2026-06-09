@@ -16,8 +16,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use chatmail_types::{ChatmailError, Result};
+
+use crate::cas::ContentStore;
+use crate::fsync_batch::FsyncCoordinator;
+use crate::maildir_cache::MaildirListCache;
+use crate::storage_policy::StoragePolicy;
+use crate::uidlist::UidListStore;
 
 /// Maildir layout under `{state_dir}/mail/{user}/Maildir/`.
 #[derive(Debug, Clone)]
@@ -28,20 +35,73 @@ pub struct MaildirPaths {
     pub tmp: PathBuf,
 }
 
+#[derive(Debug)]
+struct MailboxStoreInner {
+    policy: StoragePolicy,
+    list_cache: MaildirListCache,
+    uidlist: UidListStore,
+    fsync: FsyncCoordinator,
+    content_store: ContentStore,
+}
+
+/// On-disk maildir access with listing cache, fsync policy, and optional CAS dedup.
 #[derive(Debug, Clone)]
 pub struct MailboxStore {
     state_dir: PathBuf,
+    inner: Arc<MailboxStoreInner>,
 }
 
 impl MailboxStore {
     pub fn new(state_dir: impl Into<PathBuf>) -> Self {
+        Self::with_policy(state_dir, StoragePolicy::default())
+    }
+
+    pub fn with_policy(state_dir: impl Into<PathBuf>, policy: StoragePolicy) -> Self {
+        let state_dir = state_dir.into();
+        let fsync_mode = policy.fsync_mode;
         Self {
-            state_dir: state_dir.into(),
+            state_dir: state_dir.clone(),
+            inner: Arc::new(MailboxStoreInner {
+                policy,
+                list_cache: MaildirListCache::default(),
+                uidlist: UidListStore::default(),
+                fsync: FsyncCoordinator::new(fsync_mode),
+                content_store: ContentStore::new(&state_dir),
+            }),
         }
     }
 
     pub fn state_dir(&self) -> &Path {
         &self.state_dir
+    }
+
+    pub fn policy(&self) -> &StoragePolicy {
+        &self.inner.policy
+    }
+
+    pub(crate) fn list_cache(&self) -> &MaildirListCache {
+        &self.inner.list_cache
+    }
+
+    pub(crate) fn uidlist(&self) -> &UidListStore {
+        &self.inner.uidlist
+    }
+
+    /// Mailbox UIDVALIDITY exposed to the IMAP layer (constant; UIDs are globally stable).
+    pub fn uid_validity(&self) -> u32 {
+        self.inner.uidlist.uid_validity()
+    }
+
+    pub(crate) fn fsync(&self) -> &FsyncCoordinator {
+        &self.inner.fsync
+    }
+
+    pub(crate) fn content_store(&self) -> &ContentStore {
+        &self.inner.content_store
+    }
+
+    pub fn invalidate_mailbox_listing(&self, user: &str, mailbox: &str) {
+        self.inner.list_cache.invalidate(user, mailbox);
     }
 
     /// INBOX maildir (`mail/{user}/Maildir/`).
@@ -117,12 +177,7 @@ pub async fn mailbox_exists(store: &MailboxStore, user: &str, mailbox: &str) -> 
 
 /// fsync a directory so a preceding `rename`/`hard_link` into it survives a crash.
 ///
-/// `File::sync_data` makes the *content* durable, but the directory entry that points at the
-/// renamed/linked file may not be flushed until the kernel decides to (ext4 `data=ordered`, xfs,
-/// btrfs, NFS …). Combined with notifying clients right after delivery, this is the classic
-/// maildir "the client was told about a message whose file vanished on reboot" hole. Calling this
-/// after the rename/link closes the window. On non-Unix targets it is a no-op (directory fds are
-/// not fsync-able there).
+/// Prefer [`FsyncCoordinator::commit_directory`] for policy-aware durability.
 #[cfg(unix)]
 pub(crate) async fn fsync_dir(dir: &Path) -> Result<()> {
     let dir = tokio::fs::File::open(dir)
@@ -151,6 +206,7 @@ async fn dir_size(dir: &Path) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage_policy::FsyncMode;
 
     /// P2-UT01: Maildir tree is created.
     #[tokio::test]
@@ -163,5 +219,18 @@ mod tests {
         assert!(paths.new.is_dir());
         assert!(paths.tmp.is_dir());
         assert!(paths.root.ends_with("mail/alice@example.org/Maildir"));
+    }
+
+    /// P11-UT10: custom storage policy is retained on the store handle.
+    #[test]
+    fn p11_ut10_mailbox_store_with_policy() {
+        let policy = StoragePolicy {
+            fsync_mode: FsyncMode::Never,
+            cas_enabled: false,
+            ..StoragePolicy::default()
+        };
+        let store = MailboxStore::with_policy("/tmp/x", policy.clone());
+        assert_eq!(store.policy().fsync_mode, FsyncMode::Never);
+        assert!(!store.policy().cas_enabled);
     }
 }

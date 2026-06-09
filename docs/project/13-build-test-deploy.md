@@ -48,7 +48,6 @@ Remote deploys assume you have `REMOTE1` / `REMOTE2` (and optionally keys) in `.
 
 ### Other
 
-- `make t1-bench` — throughput benchmark (incus + cmlxc)
 - `relay-ping-*` targets — build the separate relay-ping tool
 
 ## Embedding the Admin Web (the magic step)

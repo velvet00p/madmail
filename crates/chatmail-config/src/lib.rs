@@ -102,6 +102,10 @@ pub struct AppConfig {
     pub appendlimit: Option<String>,
     /// `smtp` / `submission` `max_message_size` (e.g. `100M`).
     pub max_message_size: Option<String>,
+    /// `storage.imapsql mail_fsync` — `always`, `optimized`, or `never` (Dovecot parity).
+    pub mail_fsync: Option<String>,
+    /// `storage.imapsql blob_dedup` — content-addressed dedup for identical payloads.
+    pub blob_dedup: Option<String>,
 
     /// `chatmail` HTTP endpoint.
     pub mail_domain: Option<String>,

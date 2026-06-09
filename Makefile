@@ -3,7 +3,7 @@
 # Madmail (Go/maddy) originals: build.sh, systemd install, sign/deploy.
 # Deploy: `make push` builds release chatmail, scp's to test servers, replaces binary, restarts systemd (no signing).
 
-.PHONY: all init build build-admin-web build-chatmail-embed build-chatmail-embed-release build-with-admin-web build-release build-release-static build-workspace build-all \
+.PHONY: all init build build-admin-web build-chatmail-embed build-chatmail-embed-release build-with-admin-web build-release build-profiling build-release-static build-workspace build-all \
 	test test-unit test-integration test-e2e test-maintenance test-imap test-turn test-core-turn test-deltachat test-dclogin relay-ping-build relay-ping-clean t1-bench t1-report-demo \
 	check vet lint fmt fmt-check run run-bg run-debug restart stop logs reset-db dev-certs clean help \
 	sign push push1 push2 log1 log2 push-signed publish init-publish build-publish
@@ -15,6 +15,7 @@ export
 # ── Paths & binaries ─────────────────────────────────────────────────────────
 BINARY_DEBUG     := target/debug/chatmail
 BINARY_RELEASE   := target/release/chatmail
+BINARY_PROFILING := build/madmail-linux-amd64-profiling
 BINARY_PUSH      ?= $(BINARY_RELEASE)
 STATE_DIR        ?= ./data
 CONFIG           ?= $(STATE_DIR)/chatmail.toml
@@ -143,6 +144,15 @@ build:
 	cargo build -p chatmail
 
 build-release: build-admin-web build-chatmail-embed-release
+
+# Release binary with CPU profiling server on :6060 (/debug/pprof/flamegraph). For benchmarks only.
+build-profiling: build-admin-web
+	@test -f "$(ADMIN_WEB_BUILD)/index.html" || (echo "-- [!] Missing $(ADMIN_WEB_BUILD); run make build-admin-web first"; exit 1)
+	rm -rf crates/chatmail-admin-web/embed
+	CHATMAIL_ADMIN_WEB_BUILD="$(abspath $(ADMIN_WEB_BUILD))" cargo build -p chatmail --release --features pprof
+	@mkdir -p build
+	@cp $(BINARY_RELEASE) $(BINARY_PROFILING)
+	@echo "-- Profiling binary: $(BINARY_PROFILING) (pprof on http://127.0.0.1:6060/debug/pprof/)"
 
 # Static-pie release binary (glibc + vendored OpenSSL/sqlite); runs on Debian 12+ without host glibc match.
 # Uses `cargo rustc` so proc-macros are not built with +crt-static (see scripts/build-release-static.sh).
@@ -371,7 +381,7 @@ clean: relay-ping-clean
 help:
 	@echo "chatmail-rs Makefile (from context/madmail/Makefile)"
 	@echo ""
-	@echo "Build:     build (Rust only), build-admin-web ($(ADMIN_WEB_DIR) SPA), build-with-admin-web (SPA+embed+Rust), build-release, build-release-static"
+	@echo "Build:     build (Rust only), build-admin-web ($(ADMIN_WEB_DIR) SPA), build-with-admin-web (SPA+embed+Rust), build-release, build-profiling (release + pprof), build-release-static"
 	@echo "Run:       run, restart, dev-certs, dev-bind-cap (Linux <1024 ports), reset-db, install"
 	@echo "Admin UI:  edit $(ADMIN_WEB_DIR) → make build-with-admin-web → make restart"
 	@echo "Deploy:    push, push1 (unsigned), push2 (static+sign+upgrade), push-signed, sign (scripts/sign.sh), log1, log2 (scripts/deploy.sh)"

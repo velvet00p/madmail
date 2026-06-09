@@ -203,6 +203,34 @@ async fn imap_e2e_append_plaintext_rejected() {
     assert!(r.contains("NO [ENCRYPTED]"), "plaintext append: {r}");
 }
 
+#[tokio::test]
+async fn imap_e2e_large_append_streaming_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let srv = spawn_mail_servers(dir.path()).await;
+    create_user(&srv.ctx, &srv.pool, USER, PASS).await;
+
+    let mut body = pgp_mime_for_user(USER);
+    body.extend(std::iter::repeat_n(b'X', 70_000usize.saturating_sub(body.len())));
+    assert!(
+        body.len() >= srv.ctx.mailbox_store.policy().stream_threshold,
+        "body must hit streaming APPEND path"
+    );
+
+    let mut c = ImapClient::connect(srv.imap_addr).await;
+    c.command(&format!("l001 LOGIN {USER} {PASS}")).await;
+    let append = c
+        .append_literal(&format!("l002 APPEND INBOX {{{}}}", body.len()), &body)
+        .await;
+    assert!(append.contains("OK APPEND"), "large append: {append}");
+
+    let sel = c.command("l003 SELECT INBOX").await;
+    assert!(sel.contains("* 1 EXISTS"), "after large append: {sel}");
+
+    let fetch = c.command("l004 UID FETCH 1 (RFC822.SIZE)").await;
+    assert!(fetch.contains("OK FETCH"), "fetch large body: {fetch}");
+    assert!(fetch.contains("RFC822.SIZE 70000"), "size in fetch: {fetch}");
+}
+
 // --- QUOTA (RFC 2087, Madmail GETQUOTA only) ---
 
 #[tokio::test]
@@ -340,6 +368,44 @@ async fn imap_e2e_uid_store_deleted_and_close_expunge() {
     c.command("d004 CLOSE").await;
     let sel = c.command("d005 SELECT INBOX").await;
     assert!(sel.contains("* 0 EXISTS"), "expunged: {sel}");
+}
+
+/// Dovecot-style uidlist: UIDs are permanent. Deleting a message must NOT renumber survivors
+/// (the positional scheme used to turn {1,2,3} into {1,2} after expunging UID 2).
+#[tokio::test]
+async fn imap_e2e_uids_stable_across_expunge() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let srv = spawn_mail_servers(dir.path()).await;
+    create_user(&srv.ctx, &srv.pool, USER, PASS).await;
+    deliver_message(&srv.ctx, USER, "m1", PGP_MIME_BODY).await;
+    deliver_message(&srv.ctx, USER, "m2", PGP_MIME_BODY).await;
+    deliver_message(&srv.ctx, USER, "m3", PGP_MIME_BODY).await;
+
+    let mut c = ImapClient::connect(srv.imap_addr).await;
+    c.command(&format!("u001 LOGIN {USER} {PASS}")).await;
+    let sel = c.command("u002 SELECT INBOX").await;
+    assert!(sel.contains("* 3 EXISTS"), "three delivered: {sel}");
+
+    let before = c.command("u003 UID FETCH 1:* (UID)").await;
+    assert!(before.contains("UID 1"), "uid 1 present: {before}");
+    assert!(before.contains("UID 2"), "uid 2 present: {before}");
+    assert!(before.contains("UID 3"), "uid 3 present: {before}");
+
+    // Expunge the middle message (UID 2).
+    let del = c.command("u004 UID STORE 2 +FLAGS (\\Deleted)").await;
+    assert!(del.contains("OK UID STORE"), "delete: {del}");
+    c.command("u005 CLOSE").await;
+
+    let resel = c.command("u006 SELECT INBOX").await;
+    assert!(resel.contains("* 2 EXISTS"), "two survivors: {resel}");
+
+    let after = c.command("u007 UID FETCH 1:* (UID)").await;
+    assert!(after.contains("UID 1"), "uid 1 kept: {after}");
+    assert!(after.contains("UID 3"), "uid 3 kept (not renumbered): {after}");
+    assert!(
+        !after.contains("UID 2"),
+        "expunged UID 2 must not reappear or be reused: {after}"
+    );
 }
 
 #[tokio::test]

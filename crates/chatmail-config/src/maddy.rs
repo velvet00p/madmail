@@ -229,6 +229,8 @@ fn apply_directive(name: &str, args: &[String], block_path: &[&str], cfg: &mut A
                 cfg.unused_account_retention = Some(value.clone());
             }
             "appendlimit" if has_value => cfg.appendlimit = Some(value.clone()),
+            "mail_fsync" if has_value => cfg.mail_fsync = Some(value.clone()),
+            "blob_dedup" if has_value => cfg.blob_dedup = Some(value.clone()),
             _ => {}
         }
     }
@@ -730,5 +732,16 @@ turn {
         assert_eq!(cfg.retention.as_deref(), Some("24h"));
         assert_eq!(cfg.tls_mode.as_deref(), Some("file"));
         assert_eq!(cfg.log_target.as_deref(), Some("stderr"));
+    }
+
+    /// P11-UT15: storage.imapsql mail_fsync and blob_dedup directives parse.
+    #[test]
+    fn p11_ut15_parses_mail_fsync_and_blob_dedup() {
+        let cfg = parse_maddy_config(
+            "storage.imapsql local_mailboxes {\n    mail_fsync optimized\n    blob_dedup on\n}\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.mail_fsync.as_deref(), Some("optimized"));
+        assert_eq!(cfg.blob_dedup.as_deref(), Some("on"));
     }
 }

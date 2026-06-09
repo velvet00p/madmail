@@ -16,19 +16,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 pub mod blob;
+pub mod cas;
 pub mod external_store;
+pub mod delivery_batch;
+pub mod fsync_batch;
 pub mod inbox;
 pub mod maildir;
+pub mod maildir_cache;
 pub mod maildir_message;
 pub mod purge;
+pub mod storage_policy;
+pub mod uidlist;
 
 pub use external_store::{ExternalKey, ExternalStore, FsStore};
 pub use inbox::{list_inbox, InboxEntry};
 
 pub use blob::{
-    delete_blob, deliver_local_messages, read_blob, read_blob_known, read_blob_range_known,
-    write_blob, write_blob_mailbox, DeliveryOutcome,
+    commit_mailbox_blob_from_tmp, delete_blob, deliver_local_messages, read_blob, read_blob_known,
+    read_blob_range_known, stream_append_direct_final_no_hash, stream_append_to_tmp, write_blob,
+    write_blob_mailbox, write_blob_mailbox_stream, DeliveryOutcome,
 };
+pub use cas::{hash_bytes, ContentStore};
 pub use maildir::{mailbox_exists, MailboxStore, MaildirPaths};
 pub use maildir_message::{
     copy_message, expunge_deleted, list_mailbox_messages, move_message, split_maildir_filename,
@@ -38,3 +46,4 @@ pub use purge::{
     prune_unread_older, purge_all_mail_blobs, purge_mail_blobs_older, purge_read_messages,
     purge_user_messages,
 };
+pub use storage_policy::{FsyncMode, StoragePolicy};

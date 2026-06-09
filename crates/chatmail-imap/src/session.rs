@@ -25,7 +25,9 @@ use chatmail_pgp::{enforce_encryption, EnforceOptions};
 use chatmail_state::{AppState, NewMessageEvent};
 use chatmail_storage::{
     copy_message, expunge_deleted, list_mailbox_messages, mailbox_exists, move_message, read_blob,
-    read_blob_known, read_blob_range_known, store_add_flags, write_blob_mailbox, StoredMessage,
+    read_blob_known, read_blob_range_known, store_add_flags, write_blob_mailbox,
+    commit_mailbox_blob_from_tmp, stream_append_to_tmp, stream_append_direct_final_no_hash, StoredMessage,
+    storage_policy::FsyncMode,
 };
 use chatmail_turn::TurnDiscovery;
 use chatmail_types::{ChatmailError, Result};
@@ -946,16 +948,100 @@ impl ImapSession {
         R: tokio::io::AsyncRead + Unpin,
     {
         let max_bytes = self.ctx.message_size.effective();
-        let mut literal = Vec::new();
-        if let Some((_, size)) = parse_literal_size(args) {
+        let mailbox = self
+            .selected_mailbox
+            .clone()
+            .unwrap_or_else(|| "INBOX".to_string());
+        let stream_threshold = self.ctx.mailbox_store.policy().stream_threshold;
+
+        let (literal, written_len) = if let Some((_, size)) = parse_literal_size(args) {
             if size as u64 > max_bytes {
                 return Err(ChatmailError::message_too_large());
             }
-            literal.resize(size, 0);
+            if size >= stream_threshold {
+                let msg_id = uuid::Uuid::new_v4().to_string();
+
+                let (tmp_path, header, hash, written) = if self.ctx.mailbox_store.policy().fsync_mode == FsyncMode::Never {
+                    // Ultra-fast Dovecot-like path for never + large distinct: direct to final
+                    // location, no hashing, no CAS. File is already in new/ when we return.
+                    let (written, header) = stream_append_direct_final_no_hash(
+                        &self.ctx.mailbox_store,
+                        user,
+                        &mailbox,
+                        &msg_id,
+                        lines,
+                        size as u64,
+                    )
+                    .await?;
+                    // tmp_path here is actually the final path; dummy hash is ignored downstream
+                    // because we short-circuit commit for Never.
+                    (self.ctx.mailbox_store.maildir_for_mailbox(user, &mailbox).new.join(&msg_id),
+                     header,
+                     [0u8; 32],
+                     written)
+                } else {
+                    // Normal path (with hashing for CAS)
+                    stream_append_to_tmp(
+                        &self.ctx.mailbox_store,
+                        user,
+                        &mailbox,
+                        &msg_id,
+                        lines,
+                        size as u64,
+                    )
+                    .await?
+                };
+                let mut extra = String::new();
+                lines.read_line(&mut extra).await?;
+                // PGP / Secure-Join enforcement only needs the header region (the
+                // application/pgp-encrypted marker lives in the first MIME part), so we validate
+                // the captured prefix instead of re-reading the whole file.
+                if let Err(e) = enforce_encryption(
+                    &header,
+                    &EnforceOptions {
+                        mail_from: user.to_string(),
+                        recipients: vec![user.to_string()],
+                    },
+                ) {
+                    tokio::fs::remove_file(&tmp_path).await.ok();
+                    return Err(e);
+                }
+                if let Err(e) = self.ctx.quota.check_quota(user, written) {
+                    tokio::fs::remove_file(&tmp_path).await.ok();
+                    return Err(e);
+                }
+                // Under mail_fsync=never + large distinct message we use the direct-to-final
+                // no-hash path above. The file is already in its final location in new/.
+                // Skip the entire commit/CAS machinery (another Dovecot "when never, do almost nothing" match).
+                if self.ctx.mailbox_store.policy().fsync_mode != chatmail_storage::storage_policy::FsyncMode::Never {
+                    commit_mailbox_blob_from_tmp(
+                        &self.ctx.mailbox_store,
+                        user,
+                        &mailbox,
+                        &msg_id,
+                        &tmp_path,
+                        hash,
+                        written,
+                    )
+                    .await?;
+                }
+
+                self.ctx.quota.record_write(user, written);
+                self.ctx.events.notify_new_message(user, &msg_id);
+                self.announced_exists = self.announced_exists.saturating_add(1);
+                // Do not rescan the mailbox here: notify_new_message already bumped the INBOX
+                // version, so the next command that needs the listing reloads lazily. Forcing a
+                // readdir+stat after every APPEND is the dominant cost under concurrent large
+                // uploads (Dovecot appends to its index incrementally instead of rescanning).
+                return Ok(format!("{tag} OK APPEND completed\r\n"));
+            }
+            let mut literal = vec![0; size];
             lines.read_exact(&mut literal).await?;
             let mut extra = String::new();
             lines.read_line(&mut extra).await?;
+            (literal, size)
         } else {
+            let mut literal = Vec::new();
             let mut over_limit = false;
             loop {
                 let mut dl = String::new();
@@ -980,7 +1066,10 @@ impl ImapSession {
             if over_limit {
                 return Err(ChatmailError::message_too_large());
             }
-        }
+            let written_len = literal.len();
+            (literal, written_len)
+        };
+
         enforce_encryption(
             &literal,
             &EnforceOptions {
@@ -988,19 +1077,21 @@ impl ImapSession {
                 recipients: vec![user.to_string()],
             },
         )?;
-        self.ctx.quota.check_quota(user, literal.len() as u64)?;
+        self.ctx.quota.check_quota(user, written_len as u64)?;
         let msg_id = uuid::Uuid::new_v4().to_string();
-        let mailbox = self
-            .selected_mailbox
-            .clone()
-            .unwrap_or_else(|| "INBOX".to_string());
-        write_blob_mailbox(&self.ctx.mailbox_store, user, &mailbox, &msg_id, &literal).await?;
-        self.ctx.quota.record_write(user, literal.len() as u64);
+        write_blob_mailbox(
+            &self.ctx.mailbox_store,
+            user,
+            &mailbox,
+            &msg_id,
+            &literal,
+        )
+        .await?;
+        self.ctx.quota.record_write(user, written_len as u64);
         self.ctx.events.notify_new_message(user, &msg_id);
-        // The client appended this one message itself; raise the baseline so we don't push it
-        // back as an unsolicited EXISTS, while still announcing anything else that arrived.
         self.announced_exists = self.announced_exists.saturating_add(1);
-        self.messages = self.load_messages(user, &mailbox).await?;
+        // See the streaming path above: skip the post-APPEND rescan; the next command that needs
+        // the listing reloads lazily after the version bump from notify_new_message.
         Ok(format!("{tag} OK APPEND completed\r\n"))
     }
 }
@@ -1044,14 +1135,15 @@ async fn list_messages(ctx: &AppState, user: &str, mailbox: &str) -> Result<Vec<
     Ok(list_mailbox_messages(&ctx.mailbox_store, user, mailbox)
         .await?
         .into_iter()
-        .enumerate()
-        .map(|(i, m)| stored_to_mail_message(m, (i + 1) as u32))
+        .map(stored_to_mail_message)
         .collect())
 }
 
-fn stored_to_mail_message(m: StoredMessage, uid: u32) -> MailMessage {
+/// Carry the persistent uidlist UID through to the IMAP layer instead of renumbering by position,
+/// so UIDs stay stable for the life of the mailbox (IMAP UIDVALIDITY contract).
+fn stored_to_mail_message(m: StoredMessage) -> MailMessage {
     MailMessage {
-        uid,
+        uid: m.uid,
         id: m.base_id,
         filename: m.filename,
         size: m.size,
@@ -2316,6 +2408,129 @@ mod integration_tests {
         .await;
         assert!(t.contains("NO [TOOBIG]"), "append toobig: {t}");
         assert!(t.contains(MESSAGE_FILE_TOO_BIG), "append toobig: {t}");
+    }
+
+    fn large_pgp_mime_body(min_bytes: usize) -> Vec<u8> {
+        let header = b"From: u@test\r\nTo: u@test\r\nContent-Type: multipart/encrypted; boundary=b\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nv\r\n--b--\r\n";
+        let mut body = header.to_vec();
+        if body.len() < min_bytes {
+            body.extend(std::iter::repeat_n(b'X', min_bytes - body.len()));
+        }
+        body
+    }
+
+    /// P11-UT16: APPEND literals ≥ stream_threshold use the streaming tmp path end-to-end.
+    #[tokio::test]
+    async fn p11_imap_large_append_streaming_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = chatmail_db::init_memory_db().await.unwrap();
+        let hash = hash_password("pw").unwrap();
+        chatmail_db::passwords::create_user(&pool, "u@test", &hash)
+            .await
+            .unwrap();
+        let ctx = Arc::new(AppState::new(dir.path()));
+        let body = large_pgp_mime_body(70_000);
+        assert!(
+            body.len() >= ctx.mailbox_store.policy().stream_threshold,
+            "test body must exceed streaming threshold"
+        );
+
+        let t = imap_dialog(
+            pool,
+            ctx.clone(),
+            &[
+                "d001 LOGIN u@test pw",
+                &format!("d002 APPEND INBOX {{{}}}", body.len()),
+                &format!("LITERAL:{}", String::from_utf8_lossy(&body)),
+                "d003 SELECT INBOX",
+                "d004 UID FETCH 1 (UID RFC822.SIZE)",
+            ],
+        )
+        .await;
+        assert!(t.contains("OK APPEND"), "large append: {t}");
+        assert!(t.contains("* 1 EXISTS"), "select after large append: {t}");
+        assert!(t.contains(&format!("RFC822.SIZE {}", body.len())), "size: {t}");
+
+        let new_dir = ctx.mailbox_store.maildir_for_user("u@test").new;
+        let entries: Vec<_> = std::fs::read_dir(&new_dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        assert_eq!(entries.len(), 1, "exactly one maildir entry");
+        assert_eq!(std::fs::read(&entries[0]).unwrap(), body);
+
+        let blob_root = dir.path().join("blobs");
+        assert!(blob_root.exists(), "CAS store should hold canonical blob");
+    }
+
+    /// P11-UT17: streaming APPEND rejects plaintext and leaves no `new/` or `tmp/` artifacts.
+    #[tokio::test]
+    async fn p11_streaming_append_rejects_plaintext_without_artifacts() {
+        use chatmail_storage::StoragePolicy;
+        use std::io::Cursor;
+        use tokio::io::BufReader;
+
+        let dir = tempfile::tempdir().unwrap();
+        let pool = chatmail_db::init_memory_db().await.unwrap();
+        let policy = StoragePolicy {
+            stream_threshold: 1024,
+            ..StoragePolicy::default()
+        };
+        let ctx = Arc::new(AppState::with_quota_and_message_limit(
+            dir.path(),
+            chatmail_config::DEFAULT_QUOTA_BYTES,
+            &chatmail_config::AppConfig::default(),
+        ));
+        // Replace store with lower threshold for this test.
+        let store = chatmail_storage::MailboxStore::with_policy(dir.path(), policy);
+        let ctx = Arc::new(chatmail_state::AppState {
+            mailbox_store: Arc::new(store),
+            ..(*ctx).clone()
+        });
+
+        let plain_header =
+            b"From: u@test\r\nSubject: x\r\nContent-Type: text/plain\r\n\r\n";
+        let mut plain = plain_header.to_vec();
+        plain.extend(std::iter::repeat_n(b'n', 2048 - plain.len()));
+
+        let wire = format!("APPEND INBOX {{{}}}\r\n", plain.len());
+        let mut payload = wire.into_bytes();
+        payload.extend_from_slice(&plain);
+        payload.extend_from_slice(b"\r\n");
+
+        let mut session = ImapSession::new(
+            ctx.clone(),
+            pool,
+            ImapSessionConfig {
+                hostname: "imap.test".into(),
+                primary_domain: "test".into(),
+                jit_domain: None,
+                credential_policy: CredentialPolicy::default(),
+                turn: None,
+                iroh: None,
+                starttls_config: None,
+            },
+        );
+        session.selected_mailbox = Some("INBOX".into());
+        let mut reader = BufReader::new(Cursor::new(payload));
+        let err = session
+            .handle_append(&mut reader, "z001", &format!("INBOX {{{}}}", plain.len()), "u@test")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ChatmailError::EncryptionNeeded(_)));
+
+        let paths = ctx.mailbox_store.maildir_for_user("u@test");
+        assert!(
+            std::fs::read_dir(&paths.new).map(|mut d| d.next()).unwrap().is_none(),
+            "rejected append must not create new/ entry"
+        );
+        assert!(
+            std::fs::read_dir(&paths.tmp)
+                .map(|d| d.count())
+                .unwrap_or(0)
+                == 0,
+            "rejected append must clean tmp/"
+        );
     }
 
     /// P6 integration: IDLE receives unsolicited EXISTS/RECENT when mail is delivered.
