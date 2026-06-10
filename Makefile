@@ -349,6 +349,15 @@ build-publish: build-release
 	@cp target/x86_64-pc-windows-gnu/release/madmail.exe build/madmail-windows-amd64.exe
 	@$(MAKE) build-release-static
 	@cp $(BINARY_RELEASE) build/madmail-linux-amd64-legacy
+	@rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl >/dev/null 2>&1 || true
+	@command -v zig >/dev/null || { echo "Install zig for musl release (https://ziglang.org/download/)" >&2; exit 1; }
+	@command -v cargo-zigbuild >/dev/null || { echo "Install cargo-zigbuild for musl release: cargo install cargo-zigbuild" >&2; exit 1; }
+	@CHATMAIL_ADMIN_WEB_BUILD="$(abspath $(ADMIN_WEB_BUILD))" \
+		cargo zigbuild -p chatmail --release --target x86_64-unknown-linux-musl
+	@cp target/x86_64-unknown-linux-musl/release/madmail build/madmail-linux-amd64-musl
+	@CHATMAIL_ADMIN_WEB_BUILD="$(abspath $(ADMIN_WEB_BUILD))" \
+		cargo zigbuild -p chatmail --release --target aarch64-unknown-linux-musl
+	@cp target/aarch64-unknown-linux-musl/release/madmail build/madmail-linux-arm64-musl
 
 # First-time assets (iroh-relay, admin-web submodule) then full release publish.
 init-publish: init publish
