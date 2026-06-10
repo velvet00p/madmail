@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use support::{
-    create_user, deliver_message, pgp_mime_for_user, smtp_submit, spawn_mail_servers, ImapClient,
-    PGP_MIME_BODY,
+    create_user, deliver_message, pgp_mime_for_user, smtp_submit, spawn_mail_servers,
+    spawn_mail_servers_opts, ImapClient, PGP_MIME_BODY,
 };
 
 const USER: &str = "u@test";
@@ -494,4 +494,66 @@ async fn imap_e2e_delta_chat_sync_session() {
     assert!(fetch.contains("RFC822.SIZE"), "prefetch: {fetch}");
 
     assert!(c.command("dc07 LOGOUT").await.contains("OK") || c.transcript().contains("BYE"));
+}
+
+// --- Push notifications (XDELTAPUSH / SETMETADATA /private/devicetoken) ---
+
+#[tokio::test]
+async fn imap_e2e_push_devicetoken_setmetadata() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let srv = spawn_mail_servers(dir.path()).await;
+    create_user(&srv.ctx, &srv.pool, USER, PASS).await;
+
+    let mut c = ImapClient::connect(srv.imap_addr).await;
+    let caps = c.command("p001 CAPABILITY").await;
+    assert!(caps.contains("XDELTAPUSH"), "push cap: {caps}");
+    assert!(caps.contains("METADATA"), "metadata cap: {caps}");
+
+    c.command(&format!("p002 LOGIN {USER} {PASS}")).await;
+    let set = c
+        .command(r#"p003 SETMETADATA INBOX (/private/devicetoken "openpgp:relay-ping-token" )"#)
+        .await;
+    assert!(set.contains("OK SETMETADATA"), "set: {set}");
+
+    let get = c.command("p004 GETMETADATA INBOX /private/devicetoken").await;
+    assert!(
+        get.contains("openpgp:relay-ping-token"),
+        "get devicetoken: {get}"
+    );
+
+    // Second token is appended (cmdeploy / chatmaild behaviour).
+    let set2 = c
+        .command(r#"p005 SETMETADATA INBOX (/private/devicetoken "openpgp:second-token" )"#)
+        .await;
+    assert!(set2.contains("OK SETMETADATA"), "set2: {set2}");
+    let get2 = c.command("p006 GETMETADATA INBOX /private/devicetoken").await;
+    assert!(get2.contains("openpgp:relay-ping-token"), "token1: {get2}");
+    assert!(get2.contains("openpgp:second-token"), "token2: {get2}");
+}
+
+#[tokio::test]
+async fn imap_e2e_push_disabled_hides_capabilities() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let srv = spawn_mail_servers_opts(
+        dir.path(),
+        support::MailServersOpts {
+            push_enabled: false,
+            ..Default::default()
+        },
+    )
+    .await;
+    create_user(&srv.ctx, &srv.pool, USER, PASS).await;
+
+    let mut c = ImapClient::connect(srv.imap_addr).await;
+    let caps = c.command("d001 CAPABILITY").await;
+    assert!(!caps.contains("XDELTAPUSH"), "push off: {caps}");
+
+    c.command(&format!("d002 LOGIN {USER} {PASS}")).await;
+    let set = c
+        .command(r#"d003 SETMETADATA INBOX (/private/devicetoken "tok" )"#)
+        .await;
+    assert!(
+        set.contains("NO") && set.contains("push"),
+        "set rejected when disabled: {set}"
+    );
 }

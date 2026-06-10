@@ -110,6 +110,7 @@ Status legend: **done** · **planned** (TDD scope) · **defer** (post-MVP) · **
 | `html-serve` | `ctl/html.go` | **done** |
 | `webimap` | — (admin API only in Go) | **done** (`enable` / `disable` / `status`) |
 | `websmtp` | — | **done** |
+| `push` | `status`, `auto`, `on`, `off` | **done** — `__PUSH_MODE__` (default **`off`**); auto disables after 5 consecutive notification-proxy failures ([23-push-notifications.md](23-push-notifications.md)) |
 
 ### Hidden / dev
 

@@ -13,6 +13,7 @@ chatmail-config = { workspace = true }
 chatmail-shadowsocks = { workspace = true }
 chatmail-delivery = { workspace = true }
 chatmail-imap = { workspace = true }
+chatmail-push = { workspace = true }
 chatmail-state = { workspace = true }
 chatmail-storage = { workspace = true }
 chatmail-types = { workspace = true }

@@ -27,6 +27,10 @@ use chatmail_db::{
     settings_keys, DbPool,
 };
 use chatmail_imap::imap_connection_peers;
+use chatmail_push::{
+    consecutive_failures, push_mode, push_runtime_enabled, push_stats_snapshot,
+    AUTO_DISABLE_AFTER_FAILURES,
+};
 use chatmail_state::tracker::FederationStatRow;
 
 use super::AdminResult;
@@ -140,6 +144,18 @@ async fn build_status_body(
             "enabled": mr.enabled,
             "days": mr.days,
             "retention": mr.retention,
+        }),
+    );
+    let push_enabled = push_runtime_enabled(&st.pool).await.map_err(db_err)?;
+    let push_mode = push_mode(&st.pool).await.map_err(db_err)?;
+    body.insert(
+        "push".into(),
+        json!({
+            "enabled": push_enabled,
+            "mode": push_mode.as_str(),
+            "successful_notifications": push_stats_snapshot(),
+            "consecutive_failures": consecutive_failures(),
+            "auto_disable_after": AUTO_DISABLE_AFTER_FAILURES,
         }),
     );
 

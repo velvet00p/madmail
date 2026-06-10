@@ -113,6 +113,8 @@ Stored in the `settings` table with Madmail `__KEY__` names (see `chatmail-db::s
 - `__REGISTRATION_OPEN__`, `__JIT_REGISTRATION_ENABLED__`
 - `__FEDERATION_POLICY__`, `__FEDERATION_ENABLED__`
 - `__AUTO_PURGE_SEEN__` — auto-delete seen IMAP messages (default off; admin `/admin/services/auto_purge_seen`)
+- `__PUSH_MODE__` — `auto` | `on` | `off` (default **`off`**); controls runtime POSTs to `notifications.delta.chat` and IMAP `XDELTAPUSH` advertisement. Admin `/admin/services/push`, CLI `madmail push`, admin-web toggle — see [23-push-notifications.md](23-push-notifications.md)
+- `__PUSH_ENABLED__` — legacy `true`/`false` mirror of runtime enabled state (default **`false`**); kept in sync with `__PUSH_MODE__` for older admin builds
 - Port and feature toggles (`__SMTP_PORT__`, `__SUBMISSION_PORT__`, `__IMAP_PORT__`, …) — admin API `/admin/settings/*`; www `dclogin` and `DcloginMailSettings::from_config_with_db` read these on every page render; SMTP/IMAP/HTTP bind addresses use the same overrides at process start (`effective_*_listen` in `chatmail-config`)
 
 `log off` (or omit `log`) is the default; use `log stderr` / `log syslog` in config to enable tracing. Restart required.

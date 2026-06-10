@@ -127,6 +127,9 @@ async fn handle_mxdeliv(
     write_blob(&st.app.mailbox_store, &rcpt, &msg_id, body).await?;
     st.app.quota.record_write(&rcpt, body.len() as u64);
     st.app.events.notify_new_message(&rcpt, &msg_id);
+    st.app
+        .notify_inbound_push(&st.pool, &mail_from, &rcpt)
+        .await;
 
     chatmail_db::record_inbound_delivery();
     Ok(())
@@ -152,7 +155,7 @@ mod tests {
     async fn p7_ut01_test_silently_drops_admin_recipient() {
         let pool = init_memory_db().await.unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let app = Arc::new(AppState::new(dir.path()));
+        let app = Arc::new(AppState::new(dir.path(), pool.clone()));
         app.federation_policy.hydrate(&pool).await.unwrap();
 
         let st = FedState {
@@ -188,7 +191,7 @@ mod tests {
         .unwrap();
 
         let dir = tempfile::tempdir().unwrap();
-        let app = Arc::new(AppState::new(dir.path()));
+        let app = Arc::new(AppState::new(dir.path(), pool.clone()));
         app.federation_policy.hydrate(&pool).await.unwrap();
         app.auth.hydrate(&pool).await.unwrap();
 
@@ -229,7 +232,7 @@ mod tests {
             .await
             .unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let app = Arc::new(AppState::new(dir.path()));
+        let app = Arc::new(AppState::new(dir.path(), pool.clone()));
         app.federation_policy.hydrate(&pool).await.unwrap();
         app.auth.hydrate(&pool).await.unwrap();
 
@@ -253,7 +256,7 @@ mod tests {
     async fn p7_silently_drops_unknown_user() {
         let pool = init_memory_db().await.unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let app = Arc::new(AppState::new(dir.path()));
+        let app = Arc::new(AppState::new(dir.path(), pool.clone()));
         app.federation_policy.hydrate(&pool).await.unwrap();
 
         let st = FedState {
@@ -279,7 +282,7 @@ mod tests {
             .await
             .unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let app = Arc::new(AppState::new(dir.path()));
+        let app = Arc::new(AppState::new(dir.path(), pool.clone()));
         app.federation_policy.hydrate(&pool).await.unwrap();
         app.auth.hydrate(&pool).await.unwrap();
 

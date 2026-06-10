@@ -1,22 +1,19 @@
 [package]
-name = "chatmail-state"
+name = "chatmail-push"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-chatmail-config = { workspace = true }
 chatmail-db = { workspace = true }
-chatmail-push = { workspace = true }
-chatmail-storage = { workspace = true }
 chatmail-types = { workspace = true }
-dashmap = "6"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 sqlx = { workspace = true }
-tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "fs"] }
 tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
-chatmail-config = { workspace = true }
-chatmail-db = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"

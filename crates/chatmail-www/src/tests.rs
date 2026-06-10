@@ -166,7 +166,8 @@ async fn default_config_www_is_embedded_ram() {
     let cfg = AppConfig::default();
     assert!(cfg.www_dir.is_none());
     let dir = tempfile::tempdir().unwrap();
-    let st = crate::WwwState::new(pool, Arc::new(AppState::new(dir.path())), cfg.clone());
+    let app = Arc::new(AppState::new(dir.path(), pool.clone()));
+    let st = crate::WwwState::new(pool, app, cfg.clone());
     assert!(st.uses_embedded_www());
     assert!(!st.uses_external_www());
     assert!(st.templates.is_embedded());
@@ -222,7 +223,8 @@ async fn external_www_live_reload() {
         .unwrap()
         .contains("updated-html"));
 
-    let st = crate::WwwState::new(pool, Arc::new(AppState::new(dir.path())), cfg);
+    let app = Arc::new(AppState::new(dir.path(), pool.clone()));
+    let st = crate::WwwState::new(pool, app, cfg);
     let css = st.load_asset("marker.css").unwrap();
     assert!(css.windows(4).any(|w| w == b"blue"));
     let css2 = st.load_asset("marker.css").unwrap();
@@ -257,9 +259,10 @@ async fn binary_download_route_serves_current_executable() {
 
     let pool = init_memory_db().await.unwrap();
     let dir = tempfile::tempdir().unwrap();
+    let app_state = Arc::new(AppState::new(dir.path(), pool.clone()));
     let app = crate::www_router(crate::WwwState::new(
         pool,
-        Arc::new(AppState::new(dir.path())),
+        app_state,
         AppConfig::default(),
     ));
 
@@ -311,6 +314,7 @@ async fn webimap_send_oversize_returns_message_file_too_big() {
         dir.path(),
         chatmail_config::DEFAULT_QUOTA_BYTES,
         &cfg,
+        pool.clone(),
     ));
     set_setting(&pool, chatmail_db::settings_keys::APPENDLIMIT, "1M")
         .await
@@ -375,6 +379,7 @@ async fn app_state_check_message_size_enforces_limit() {
     use chatmail_state::AppState;
     use chatmail_types::ChatmailError;
 
+    let pool = init_memory_db().await.unwrap();
     let dir = tempfile::tempdir().unwrap();
     let mut cfg = AppConfig::default();
     cfg.appendlimit = Some("4K".into());
@@ -382,6 +387,7 @@ async fn app_state_check_message_size_enforces_limit() {
         dir.path(),
         chatmail_config::DEFAULT_QUOTA_BYTES,
         &cfg,
+        pool,
     );
     app.check_message_size(4096).unwrap();
     let err = app.check_message_size(4097).unwrap_err();
@@ -392,9 +398,10 @@ async fn app_state_check_message_size_enforces_limit() {
 async fn www_state_constructs() {
     let pool = init_memory_db().await.unwrap();
     let dir = tempfile::tempdir().unwrap();
+    let app = Arc::new(AppState::new(dir.path(), pool.clone()));
     let _state = crate::WwwState::new(
         pool,
-        Arc::new(AppState::new(dir.path())),
+        app,
         AppConfig::default(),
     );
 }
@@ -426,7 +433,7 @@ async fn new_account_returns_dclogin_url_with_ssl_hints() {
     cfg.imap_tls_listen = Some("0.0.0.0:993".into());
     cfg.submission_tls_listen = Some("0.0.0.0:465".into());
 
-    let app_state = Arc::new(AppState::new(dir.path()));
+    let app_state = Arc::new(AppState::new(dir.path(), pool.clone()));
     app_state.auth.hydrate(&pool).await.unwrap();
     app_state.listener_ports.set_runtime(
         "0.0.0.0:25",
@@ -486,7 +493,7 @@ async fn mail_autoconfig_omits_https_alpn_entry() {
     cfg.submission_tls_listen = Some("0.0.0.0:465".into());
     cfg.http_tls_listen = Some("0.0.0.0:443".into());
 
-    let app_state = Arc::new(AppState::new(dir.path()));
+    let app_state = Arc::new(AppState::new(dir.path(), pool.clone()));
     app_state.listener_ports.set_runtime(
         "0.0.0.0:25",
         Some("0.0.0.0:143".into()),

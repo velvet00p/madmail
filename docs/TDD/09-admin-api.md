@@ -50,6 +50,7 @@ Madmail-compatible JSON-RPC admin API. Full operator reference: [`context/madmai
 | `/admin/services/auto_purge_seen` | GET, POST | Implemented (`__AUTO_PURGE_SEEN__`, default disabled) |
 | `/admin/services/webimap` | GET, POST | Implemented (`__WEBIMAP_ENABLED__`, default disabled) |
 | `/admin/services/websmtp` | GET, POST | Implemented (`__WEBSMTP_ENABLED__`, default disabled) |
+| `/admin/services/push` | GET, POST | Implemented — `__PUSH_MODE__` (`auto`/`on`/`off`, **default `off`**); POSTs device tokens to `notifications.delta.chat` when enabled; GET returns `successful_notifications`, `consecutive_failures`; POST `enable`/`disable`/`auto` → soft reload. See [23-push-notifications.md](23-push-notifications.md) |
 | `/admin/settings/federation` | GET, POST | Implemented |
 | `/admin/federation/rules` | GET, POST, DELETE | Implemented |
 | `/admin/federation/servers` | GET | Implemented (`FederationTracker`) |
@@ -71,7 +72,25 @@ Madmail-compatible JSON-RPC admin API. Full operator reference: [`context/madmai
 
 Toggle POST body: `{"action": "enable"}` or `{"action": "disable"}`.
 
+Push POST body (`/admin/services/push`): `{"action": "auto"}` | `"enable"` / `"on"` | `"disable"` / `"off"` — see [23-push-notifications.md](23-push-notifications.md). Admin-web toggle uses `auto` (on) and `disable` (off).
+
 Setting POST body: `{"action": "set", "value": "..."}` or `{"action": "reset"}`.
+
+### Push in status / overview
+
+`GET /admin/status` and `GET /admin/overview` include:
+
+```json
+"push": {
+  "enabled": false,
+  "mode": "off",
+  "successful_notifications": 0,
+  "consecutive_failures": 0,
+  "auto_disable_after": 5
+}
+```
+
+`GET /admin/settings` adds `push_mode` and legacy `push_enabled` for admin-web.
 
 ### `/admin/notice` (Madmail `resources/notice.go`)
 
@@ -140,6 +159,8 @@ crates/chatmail-fed/src/server.rs
 | `p9_auth_gate_bearer` | constant-time Bearer check |
 | `p9_notice_post_delivers` | POST `/admin/notice` → local maildir |
 | `p9_queue_purge_blobs_older` | POST `/admin/queue` `purge_blobs_older` |
+| `p9_push_service_toggle` | GET/POST `/admin/services/push` (mode + stats) |
+| `p9_status_push_stats` | `push` object in `/admin/status` |
 
 Run: `cargo test -p chatmail-admin`
 
@@ -160,7 +181,9 @@ Mounted on the HTTP listener together with `/mxdeliv` and `/api/admin` (see `cra
 
 ## Web admin panel (Svelte)
 
-Madmail serves a separate SPA from `admin-web/` via `adminweb.go`. chatmail-rs: JSON admin API only for now; Svelte dashboard is optional follow-up.
+Madmail serves a separate SPA from `admin-web/` via `adminweb.go`. chatmail-rs embeds **`external/madmail-admin-web`** via `chatmail-admin-web` on the HTTP listener (same origin as `/api/admin`).
+
+Push UI: overview card + services row — toggle (`auto`/`disable`), successful-notification count, `notifications.delta.chat` copy. See [23-push-notifications.md](23-push-notifications.md#admin-web-embedded-spa).
 
 ## Implementation references
 

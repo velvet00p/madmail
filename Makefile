@@ -35,8 +35,8 @@ RELAY_STEP_TIMEOUT ?= 45s
 # Remote deploy hosts (paths/service defaults live in scripts/deploy.sh)
 REMOTE1          ?=
 REMOTE2          ?=
-# Madmail admin-web submodule (context/madmail/admin-web). Override in .env if needed.
-ADMIN_WEB_DIR    ?= context/madmail/admin-web
+# Madmail admin-web submodule (external/madmail-admin-web). Override in .env if needed.
+ADMIN_WEB_DIR    ?= external/madmail-admin-web
 ADMIN_WEB_BUILD  := $(ADMIN_WEB_DIR)/build
 
 # scripts/publish.sh flags (e.g. --no-github-release). Not the `init` target — use `make init publish`.
@@ -104,8 +104,8 @@ init:
 # npm build + stamp version.json + cargo (re-embed SPA into chatmail binary)
 build-admin-web:
 	@if [ ! -f "$(ADMIN_WEB_DIR)/package.json" ]; then \
-		echo "-- Initializing admin-web submodule (context/madmail/admin-web)..."; \
-		cd context/madmail && git submodule update --init admin-web; \
+		echo "-- Initializing admin-web submodule ($(ADMIN_WEB_DIR))..."; \
+		git submodule update --init $(ADMIN_WEB_DIR); \
 	fi
 	@if [ -f "$(ADMIN_WEB_DIR)/package.json" ]; then \
 		if command -v bun >/dev/null 2>&1; then \
@@ -118,7 +118,7 @@ build-admin-web:
 			echo "-- [!] No bun or npm found."; exit 1; \
 		fi; \
 	else \
-		echo "-- [!] $(ADMIN_WEB_DIR)/package.json missing (run: cd context/madmail && git submodule update --init admin-web)"; exit 1; \
+		echo "-- [!] $(ADMIN_WEB_DIR)/package.json missing (run: git submodule update --init $(ADMIN_WEB_DIR))"; exit 1; \
 	fi
 	@test -f "$(ADMIN_WEB_BUILD)/index.html" || (echo "-- [!] $(ADMIN_WEB_BUILD)/index.html missing after SPA build"; exit 1)
 	@VER=$$(cat $(ADMIN_WEB_DIR)/.version 2>/dev/null \
@@ -130,12 +130,10 @@ build-admin-web:
 # Embed $(ADMIN_WEB_BUILD) into chatmail-admin-web/embed/ at compile time.
 build-chatmail-embed:
 	@test -f "$(ADMIN_WEB_BUILD)/index.html" || (echo "-- [!] Missing $(ADMIN_WEB_BUILD); run make build-admin-web first"; exit 1)
-	rm -rf crates/chatmail-admin-web/embed
 	CHATMAIL_ADMIN_WEB_BUILD="$(abspath $(ADMIN_WEB_BUILD))" cargo build -p chatmail
 
 build-chatmail-embed-release:
 	@test -f "$(ADMIN_WEB_BUILD)/index.html" || (echo "-- [!] Missing $(ADMIN_WEB_BUILD); run make build-admin-web first"; exit 1)
-	rm -rf crates/chatmail-admin-web/embed
 	CHATMAIL_ADMIN_WEB_BUILD="$(abspath $(ADMIN_WEB_BUILD))" cargo build -p chatmail --release
 
 build-with-admin-web: build-admin-web build-chatmail-embed
@@ -148,7 +146,6 @@ build-release: build-admin-web build-chatmail-embed-release
 # Release binary with CPU profiling server on :6060 (/debug/pprof/flamegraph). For benchmarks only.
 build-profiling: build-admin-web
 	@test -f "$(ADMIN_WEB_BUILD)/index.html" || (echo "-- [!] Missing $(ADMIN_WEB_BUILD); run make build-admin-web first"; exit 1)
-	rm -rf crates/chatmail-admin-web/embed
 	CHATMAIL_ADMIN_WEB_BUILD="$(abspath $(ADMIN_WEB_BUILD))" cargo build -p chatmail --release --features pprof
 	@mkdir -p build
 	@cp $(BINARY_RELEASE) $(BINARY_PROFILING)

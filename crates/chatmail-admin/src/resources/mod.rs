@@ -22,6 +22,7 @@ mod exchangers;
 mod federation;
 mod message_size;
 mod notice;
+mod push;
 mod proxy;
 mod queue;
 mod quota;
@@ -51,6 +52,7 @@ pub async fn dispatch(st: &AdminState, method: &str, resource: &str, body: &Valu
         "/admin/services/iroh" => {
             toggles::service_bool(st, method, body, chatmail_db::settings_keys::IROH_ENABLED).await
         }
+        "/admin/services/push" => push::service(st, method, body).await,
         "/admin/services/admin_web" => {
             toggles::service_bool(
                 st,

@@ -99,6 +99,9 @@ async fn deliver_notice(st: &AdminState, to: &str, raw: &[u8]) -> Result<(), Str
         .map_err(|e| e.to_string())?;
     st.app.quota.record_write(to, raw.len() as u64);
     st.app.events.notify_new_message(to, &msg_id);
+    st.app
+        .notify_inbound_push(&st.pool, "notice@localhost", to)
+        .await;
     Ok(())
 }
 

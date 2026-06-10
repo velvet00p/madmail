@@ -85,6 +85,12 @@ pub async fn all_settings(st: &AdminState, method: &str) -> AdminResult {
         "iroh_enabled".into(),
         json!(get_toggle(pool, settings_keys::IROH_ENABLED, true).await?),
     );
+    body.insert(
+        "push_enabled".into(),
+        json!(get_toggle(pool, settings_keys::PUSH_ENABLED, false).await?),
+    );
+    let push_mode = chatmail_push::push_mode(pool).await.map_err(db_err)?;
+    body.insert("push_mode".into(), json!(push_mode.as_str()));
     body.insert("ss_enabled".into(), json!(ss_enabled));
     body.insert(
         "auto_purge_seen_enabled".into(),

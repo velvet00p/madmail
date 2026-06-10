@@ -16,6 +16,7 @@ Twenty-one library crates under `crates/` plus integration tests in `tests/`. Fu
 | `chatmail-www` | [10](10-webimap.md) |
 | `chatmail-admin` / `chatmail-admin-web` | [09](09-admin-api.md) |
 | `chatmail-turn` / `chatmail-iroh` / `chatmail-shadowsocks` | [11](11-proxy-services.md), [20](20-deltachat-calls.md) |
+| `chatmail-push` | [23](23-push-notifications.md) |
 | `chatmail-config` / `chatmail-tasks` | [13](13-configuration.md), [14](14-cli-tools.md), [21](21-scheduled-maintenance.md) |
 | `chatmail-acme` / `chatmail-tls` | [19](19-certificates.md) |
 | `chatmail-metrics` | OpenMetrics (see [16-testing.md](16-testing.md)) |
@@ -45,6 +46,7 @@ Twenty-one library crates under `crates/` plus integration tests in `tests/`. Fu
 | `20-deltachat-calls.md` | Calls ICE/TURN test matrix |
 | `21-scheduled-maintenance.md` | Retention, dormant accounts (`chatmail-tasks`) |
 | `22-bandwidth-monitoring.md` | Bandwidth spec (planned) |
+| `23-push-notifications.md` | XDELTAPUSH, `notifications.delta.chat`, modes, CLI `madmail push` |
 
 ## RFC reference library
 
@@ -89,6 +91,6 @@ When implementing a feature, update the corresponding section and note the ownin
 
 ## Status
 
-Living design document. Core protocol sections (SMTP, IMAP, federation, admin, storage, auth, proxies) map to implemented crates. [22-bandwidth-monitoring.md](22-bandwidth-monitoring.md) is specification-only until `chatmail-state` gains counters.
+Living design document. Core protocol sections (SMTP, IMAP, federation, admin, storage, auth, proxies, push) map to implemented crates. [23-push-notifications.md](23-push-notifications.md) documents XDELTAPUSH + `notifications.delta.chat` (default off). [22-bandwidth-monitoring.md](22-bandwidth-monitoring.md) is specification-only until `chatmail-state` gains counters.
 
 **Target**: Feature parity with Madmail (Go) with Rust workspace ergonomics and safety.

@@ -52,6 +52,7 @@ Integration tests live in workspace member `tests/` (`chatmail-integration` pack
 | **`chatmail-imap`** | Async IMAP listener + IDLE | `server`, `session`, `connection_stats` |
 | **`chatmail-fed`** | HTTP listener: `/mxdeliv` + merged routers | `mxdeliv`, `server::run_http_listener` |
 | **`chatmail-delivery`** | Outbound queue (HTTP then SMTP) | `queue`, `router`, `transport` |
+| **`chatmail-push`** | XDELTAPUSH device tokens + `notifications.delta.chat` notifier | `notifier`, `store`, `mode`, `stats` — [23-push-notifications.md](23-push-notifications.md) |
 | **`chatmail-www`** | Public site, `/new`, WebIMAP/WebSMTP | `router`, `webimap`, `webimap_ws`, `handlers` |
 | **`chatmail-admin`** | Admin JSON-RPC (`POST /api/admin`) | `resources::*`, `router` |
 | **`chatmail-admin-web`** | Embedded operator SPA | `serve::admin_web_router` |
@@ -70,7 +71,7 @@ Integration tests live in workspace member `tests/` (`chatmail-integration` pack
 1. **Boot** (`boot.rs`) — state dir, `chatmail-db` migrate, admin token, `AppState::hydrate`, message-stats + federation flusher.
 2. **HTTP** (`chatmail-fed`) — binds plain/TLS; base router is `/mxdeliv`; `chatmail::servers::build_http_extra` merges admin API, admin-web SPA, and `chatmail-www` routes.
 3. **SMTP / submission** (`chatmail-smtp`) — port 25 + configured submission listeners.
-4. **IMAP** (`chatmail-imap`) — plain/TLS; METADATA for TURN/Iroh discovery.
+4. **IMAP** (`chatmail-imap`) — plain/TLS; METADATA for TURN/Iroh discovery and `XDELTAPUSH` device tokens.
 5. **Outbound** (`chatmail-delivery::start_outbound_queue`) — persistent queue + transport.
 6. **Proxies** — `turn_boot`, `iroh_boot`, `ss_boot` when enabled in settings/CLI.
 7. **Maintenance** (`chatmail-tasks::spawn_maintenance_scheduler`) — retention, dormant accounts, etc.
@@ -96,6 +97,7 @@ Reload: admin `POST /admin/reload` or signal path recreates listeners with updat
 | [17-data-models.md](17-data-models.md) | `chatmail-db/migrations/` |
 | [19-certificates.md](19-certificates.md) | `chatmail-acme`, `chatmail-tls` |
 | [21-scheduled-maintenance.md](21-scheduled-maintenance.md) | `chatmail-tasks`, `chatmail-storage`, `chatmail-db` |
+| [23-push-notifications.md](23-push-notifications.md) | `chatmail-push`, `chatmail-imap`, `chatmail-admin` |
 
 Normative protocol specs used across these crates are archived under [`RFC/`](RFC/README.md) (plain-text `rfc*.txt` + TURN REST draft). Each TDD section links the relevant local files in its **Related RFCs** table.
 
@@ -117,7 +119,7 @@ Normative protocol specs used across these crates are archived under [`RFC/`](RF
 ├─────────────────────────────────────────────────────────────────┤
 │  IMAP Server (custom async IMAP)                               │
 │   ├── IDLE push                                                  │
-│   ├── METADATA (TURN/Iroh discovery)                             │
+│   ├── METADATA (TURN/Iroh discovery, XDELTAPUSH devicetoken)   │
 │   └── QUOTA extension                                            │
 ├─────────────────────────────────────────────────────────────────┤
 │  Core Services (High-Throughput)                               │

@@ -25,7 +25,10 @@ fn extract_turn_metadata_value(imap_response: &str) -> String {
 #[tokio::test]
 async fn turn_imap_e2e_capability_metadata() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts { turn: true }).await;
+    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts {
+        turn: true,
+        ..Default::default()
+    }).await;
     create_user(&srv.ctx, &srv.pool, USER, PASS).await;
 
     let mut c = ImapClient::connect(srv.imap_addr).await;
@@ -36,7 +39,10 @@ async fn turn_imap_e2e_capability_metadata() {
 #[tokio::test]
 async fn turn_imap_e2e_getmetadata_deltachat() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts { turn: true }).await;
+    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts {
+        turn: true,
+        ..Default::default()
+    }).await;
     create_user(&srv.ctx, &srv.pool, USER, PASS).await;
 
     let mut c = ImapClient::connect(srv.imap_addr).await;
@@ -64,7 +70,10 @@ async fn turn_imap_e2e_getmetadata_deltachat() {
 #[tokio::test]
 async fn turn_imap_e2e_getmetadata_requires_auth() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts { turn: true }).await;
+    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts {
+        turn: true,
+        ..Default::default()
+    }).await;
 
     let mut c = ImapClient::connect(srv.imap_addr).await;
     let r = c
@@ -77,7 +86,10 @@ async fn turn_imap_e2e_getmetadata_requires_auth() {
 #[tokio::test]
 async fn turn_metadata_auth() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts { turn: true }).await;
+    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts {
+        turn: true,
+        ..Default::default()
+    }).await;
     create_user(&srv.ctx, &srv.pool, USER, PASS).await;
 
     let mut c = ImapClient::connect(srv.imap_addr).await;
@@ -116,7 +128,10 @@ async fn turn_metadata_auth() {
 #[tokio::test]
 async fn turn_e2e_allocate_with_imap_credentials() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts { turn: true }).await;
+    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts {
+        turn: true,
+        ..Default::default()
+    }).await;
     create_user(&srv.ctx, &srv.pool, USER, PASS).await;
 
     let mut c = ImapClient::connect(srv.imap_addr).await;
@@ -148,7 +163,10 @@ async fn turn_e2e_allocate_with_imap_credentials() {
 #[tokio::test]
 async fn turn_imap_e2e_rfc8656_relay_datapath() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts { turn: true }).await;
+    let srv = spawn_mail_servers_opts(dir.path(), MailServersOpts {
+        turn: true,
+        ..Default::default()
+    }).await;
     create_user(&srv.ctx, &srv.pool, USER, PASS).await;
 
     let mut c = ImapClient::connect(srv.imap_addr).await;

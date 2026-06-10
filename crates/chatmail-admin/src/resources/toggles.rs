@@ -58,6 +58,7 @@ pub async fn service_bool(st: &AdminState, method: &str, body: &Value, key: &str
     if method == "POST"
         && (key == chatmail_db::settings_keys::TURN_ENABLED
             || key == chatmail_db::settings_keys::IROH_ENABLED
+            || key == chatmail_db::settings_keys::PUSH_ENABLED
             || key == chatmail_db::settings_keys::ADMIN_WEB_ENABLED)
     {
         if let Some(body) = &mut res.1 {
@@ -122,6 +123,15 @@ async fn registration_toggle(pool: &DbPool, method: &str, body: &Value) -> Admin
     }
 }
 
+fn service_toggle_default_on(key: &str) -> bool {
+    matches!(
+        key,
+        settings_keys::TURN_ENABLED
+            | settings_keys::IROH_ENABLED
+            | settings_keys::JIT_REGISTRATION_ENABLED
+    )
+}
+
 /// Madmail service toggles — actions `enable` / `disable`.
 async fn toggle_setting(
     pool: &DbPool,
@@ -133,7 +143,9 @@ async fn toggle_setting(
 ) -> AdminResult {
     match method {
         "GET" => {
-            let on = get_bool_setting(pool, key, false).await.map_err(db_err)?;
+            let on = get_bool_setting(pool, key, service_toggle_default_on(key))
+                .await
+                .map_err(db_err)?;
             Ok((
                 200,
                 Some(json!({ "status": if on { on_label } else { off_label } })),

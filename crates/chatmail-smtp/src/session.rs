@@ -594,6 +594,9 @@ impl SmtpSession {
             for (rcpt, msg_id) in &outcome.delivered {
                 self.ctx.quota.record_write(rcpt, data.len() as u64);
                 self.ctx.events.notify_new_message(rcpt, msg_id);
+                self.ctx
+                    .notify_inbound_push(&self.pool, &self.mail_from, rcpt)
+                    .await;
             }
             if !outcome.failed.is_empty() {
                 for (rcpt, _msg_id, err) in &outcome.failed {
@@ -680,7 +683,7 @@ mod tests {
     async fn p4_ut03_test_smtp_state_machine_order() {
         let pool = chatmail_db::init_memory_db().await.unwrap();
         let mut s = SmtpSession {
-            ctx: Arc::new(chatmail_state::AppState::new("/tmp")),
+            ctx: Arc::new(chatmail_state::AppState::new("/tmp", pool.clone())),
             pool,
             cfg: SmtpSessionConfig {
                 hostname: "mx.test".into(),
@@ -785,7 +788,7 @@ mod tests {
     #[tokio::test]
     async fn p4_ut01_smtp_rejects_plaintext_with_523() {
         let pool = chatmail_db::init_memory_db().await.unwrap();
-        let ctx = Arc::new(AppState::new(std::env::temp_dir()));
+        let ctx = Arc::new(AppState::new(std::env::temp_dir(), pool.clone()));
         let t = smtp_dialog(
             SmtpSessionConfig {
                 hostname: "mx.test".into(),
@@ -819,7 +822,7 @@ mod tests {
         chatmail_db::passwords::create_user(&pool, "sender@test", &hash)
             .await
             .unwrap();
-        let ctx = Arc::new(AppState::new(std::env::temp_dir()));
+        let ctx = Arc::new(AppState::new(std::env::temp_dir(), pool.clone()));
         let b64 = base64::engine::general_purpose::STANDARD.encode("\0sender@test\0secret");
         let auth = format!("AUTH PLAIN {b64}");
         let t = smtp_dialog(
@@ -852,7 +855,7 @@ mod tests {
     #[tokio::test]
     async fn p4_inbound_federation_rejects_mail_from() {
         let pool = chatmail_db::init_memory_db().await.unwrap();
-        let ctx = Arc::new(AppState::new(std::env::temp_dir()));
+        let ctx = Arc::new(AppState::new(std::env::temp_dir(), pool.clone()));
         ctx.federation_policy.add_exception("evil.test");
         let t = smtp_dialog(
             SmtpSessionConfig {
@@ -882,7 +885,7 @@ mod tests {
             .await
             .unwrap();
 
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         ctx.federation_silent_dismiss
             .add(&pool, "1.1.1.1")
             .await
@@ -940,7 +943,7 @@ mod tests {
             .await
             .unwrap();
 
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         let b64 = base64::engine::general_purpose::STANDARD.encode("\0u@test\0secret");
         let auth = format!("AUTH PLAIN {b64}");
         let body = std::str::from_utf8(PGP_MIME_BODY)
@@ -999,7 +1002,8 @@ mod tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        ));
+        pool.clone(),
+    ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
 
         let payload = "x".repeat(3000);
@@ -1044,7 +1048,8 @@ mod tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        ));
+        pool.clone(),
+    ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
 
         let t = smtp_dialog(
@@ -1080,7 +1085,8 @@ mod tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        ));
+        pool.clone(),
+    ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
 
         let t = smtp_dialog(
@@ -1114,7 +1120,7 @@ mod tests {
     async fn inbound_silently_drops_unknown_local_user() {
         let dir = tempfile::tempdir().unwrap();
         let pool = chatmail_db::init_memory_db().await.unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         let body = std::str::from_utf8(PGP_MIME_BODY).unwrap();
         let t = smtp_dialog(
             SmtpSessionConfig {
@@ -1158,7 +1164,7 @@ mod tests {
         chatmail_db::passwords::create_user(&pool, "u@test", &hash)
             .await
             .unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         let body = std::str::from_utf8(PGP_MIME_BODY)
             .unwrap()
             .replace("sender@test", "admin@peer.test")
@@ -1253,7 +1259,7 @@ mod tests {
     async fn starttls_ehlo_advertises_starttls_before_tls() {
         let pool = chatmail_db::init_memory_db().await.unwrap();
         let s = SmtpSession::new(
-            Arc::new(chatmail_state::AppState::new(std::env::temp_dir())),
+            Arc::new(chatmail_state::AppState::new(std::env::temp_dir(), pool.clone())),
             pool,
             SmtpSessionConfig {
                 hostname: "mx.test".into(),
@@ -1282,7 +1288,7 @@ mod tests {
 
         let (tls_server, tls_client) = loopback_tls_configs();
         let pool = chatmail_db::init_memory_db().await.unwrap();
-        let ctx = Arc::new(AppState::new(std::env::temp_dir()));
+        let ctx = Arc::new(AppState::new(std::env::temp_dir(), pool.clone()));
         let cfg = SmtpSessionConfig {
             hostname: "mx.test".into(),
             primary_domain: "test".into(),
@@ -1348,7 +1354,7 @@ mod tests {
 
         let (tls_server, tls_client) = loopback_tls_configs();
         let pool = chatmail_db::init_memory_db().await.unwrap();
-        let ctx = Arc::new(AppState::new(std::env::temp_dir()));
+        let ctx = Arc::new(AppState::new(std::env::temp_dir(), pool.clone()));
         let cfg = SmtpSessionConfig {
             hostname: "mx.test".into(),
             primary_domain: "test".into(),

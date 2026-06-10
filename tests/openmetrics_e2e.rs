@@ -109,7 +109,7 @@ async fn smtp_submission_increments_openmetrics_counters() {
     chatmail_db::passwords::create_user(&pool, "u@test", &hash)
         .await
         .expect("user");
-    let ctx = Arc::new(AppState::new(dir.path()));
+    let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
     ctx.auth.hydrate(&pool).await.expect("auth hydrate");
 
     let metrics_addr = reserve_addr();

@@ -38,6 +38,7 @@ chatmail-turn = { workspace = true }
 chatmail-iroh = { workspace = true }
 chatmail-shadowsocks = { workspace = true }
 chatmail-metrics = { workspace = true }
+chatmail-push = { workspace = true }
 chatmail-tasks = { workspace = true }
 base64 = "0.22"
 clap = { workspace = true }

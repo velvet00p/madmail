@@ -29,6 +29,7 @@ use std::sync::Arc;
 
 use chatmail_config::AppConfig;
 use chatmail_db::DbPool;
+use chatmail_push::{push_runtime_enabled, PushNotifier};
 use chatmail_storage::{MailboxStore, StoragePolicy};
 use chatmail_types::Result;
 use dashmap::DashMap;
@@ -55,6 +56,8 @@ pub struct AppState {
     pub federation_silent_dismiss: Arc<FederationSilentDismissCache>,
     pub mailbox_store: Arc<MailboxStore>,
     pub events: Arc<EventBus>,
+    /// FCM/APNS wake-up via Delta Chat notification proxy.
+    pub push: Arc<PushNotifier>,
     /// Bound listener ports (IMAP, etc.) for admin status / `ss` probes.
     pub listener_ports: Arc<ListenerPortsStore>,
     /// Per-user mutexes so concurrent JIT logins coalesce on one DB create.
@@ -63,23 +66,32 @@ pub struct AppState {
 
 impl AppState {
     /// Dev/tests: use [`chatmail_config::DEFAULT_QUOTA_BYTES`] (1 GiB, same as Madmail).
-    pub fn new(state_dir: impl AsRef<std::path::Path>) -> Self {
-        Self::with_default_quota(state_dir, chatmail_config::DEFAULT_QUOTA_BYTES)
+    pub fn new(state_dir: impl AsRef<std::path::Path>, pool: DbPool) -> Self {
+        Self::with_default_quota(state_dir, chatmail_config::DEFAULT_QUOTA_BYTES, pool)
     }
 
     pub fn with_default_quota(
         state_dir: impl AsRef<std::path::Path>,
         default_quota_bytes: u64,
+        pool: DbPool,
     ) -> Self {
-        Self::with_quota_and_message_limit(state_dir, default_quota_bytes, &AppConfig::default())
+        Self::with_quota_and_message_limit(
+            state_dir,
+            default_quota_bytes,
+            &AppConfig::default(),
+            pool,
+        )
     }
 
     pub fn with_quota_and_message_limit(
         state_dir: impl AsRef<std::path::Path>,
         default_quota_bytes: u64,
         config: &AppConfig,
+        pool: DbPool,
     ) -> Self {
         let state_dir = state_dir.as_ref().to_path_buf();
+        let queue_dir = state_dir.join("pending_notifications");
+        let push = Arc::new(PushNotifier::new(pool, queue_dir, None));
         Self {
             auth: Arc::new(AuthCache::new()),
             message_size: Arc::new(MessageSizeLimit::new(config)),
@@ -95,6 +107,7 @@ impl AppState {
                 ),
             )),
             events: Arc::new(EventBus::new()),
+            push,
             listener_ports: Arc::new(ListenerPortsStore::new()),
             jit_flights: Arc::new(DashMap::new()),
         }
@@ -113,6 +126,15 @@ impl AppState {
             return Err(chatmail_types::ChatmailError::message_too_large());
         }
         Ok(())
+    }
+
+    /// Queue XDELTAPUSH device notifications after inbound mail (skips self-sent).
+    pub async fn notify_inbound_push(&self, pool: &DbPool, mail_from: &str, rcpt: &str) {
+        if push_runtime_enabled(pool).await.unwrap_or(false)
+            && !mail_from.eq_ignore_ascii_case(rcpt)
+        {
+            self.push.notify_inbound(rcpt);
+        }
     }
 
     pub async fn hydrate(&self, pool: &DbPool, config: &AppConfig) -> Result<()> {
@@ -144,8 +166,9 @@ mod tests {
     use chatmail_storage::FsyncMode;
 
     /// P11-UT24: AppState wires storage policy from maddy.conf mail_fsync / blob_dedup.
-    #[test]
-    fn p11_ut24_appstate_applies_storage_policy_from_config() {
+    #[tokio::test]
+    async fn p11_ut24_appstate_applies_storage_policy_from_config() {
+        let pool = chatmail_db::init_memory_db().await.unwrap();
         let cfg = AppConfig {
             mail_fsync: Some("optimized".into()),
             blob_dedup: Some("off".into()),
@@ -156,12 +179,13 @@ mod tests {
             "/tmp/chatmail-test-state",
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
+            pool.clone(),
         );
         let policy = state.mailbox_store.policy();
         assert_eq!(policy.fsync_mode, FsyncMode::Optimized);
         assert!(!policy.cas_enabled);
 
-        let default = AppState::new("/tmp/chatmail-default");
+        let default = AppState::new("/tmp/chatmail-default", pool);
         assert_eq!(default.mailbox_store.policy().fsync_mode, FsyncMode::Always);
         assert!(default.mailbox_store.policy().cas_enabled);
     }

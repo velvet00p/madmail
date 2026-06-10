@@ -38,6 +38,8 @@ Chatmail's correctness is defined by **real Delta Chat client behavior**, not ju
 | TLS for STARTTLS | `chatmail-config` | `listeners_need_tls_cert_for_starttls_only_ports` |
 | Autoconfig | `chatmail-config`, `chatmail-www` | `autoconfig_omits_https_alpn_even_when_http_tls_bound` |
 | IMAP caps | `chatmail-imap` | `p5_ut01_test_capability_includes_chatmail_extensions` (`XDELTAPUSH`) |
+| Push notify | `chatmail-push`, `chatmail-admin` | `push_mode_and_circuit_breaker`, `successful_delivery_increments_push_stats`, `p9_push_service_toggle` |
+| IMAP push E2E | `tests/imap_e2e.rs` | `imap_e2e_push_devicetoken_setmetadata`, `imap_e2e_push_disabled_hides_capabilities` |
 | SMTP submission | `chatmail-smtp` | `submission_starttls_upgrade_then_auth_allowed` |
 
 Run cmping unit tests: `cd context/cmping && uv run python -m unittest test_cmping_dclogin.py -v`

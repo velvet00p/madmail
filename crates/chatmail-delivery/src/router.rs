@@ -146,6 +146,9 @@ impl DeliveryContext {
             for (rcpt, msg_id) in &outcome.delivered {
                 self.state.quota.record_write(rcpt, data.len() as u64);
                 self.state.events.notify_new_message(rcpt, msg_id);
+                self.state
+                    .notify_inbound_push(&self.pool, mail_from, rcpt)
+                    .await;
             }
             if !outcome.failed.is_empty() {
                 for (rcpt, _msg_id, err) in &outcome.failed {
@@ -196,7 +199,7 @@ mod tests {
     async fn silent_dismiss_skips_remote_enqueue() {
         let pool = init_memory_db().await.unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let app = Arc::new(AppState::new(dir.path()));
+        let app = Arc::new(AppState::new(dir.path(), pool.clone()));
         app.auth.hydrate(&pool).await.unwrap();
         app.federation_silent_dismiss
             .add(&pool, "remote.test")
@@ -244,7 +247,7 @@ mod tests {
             .unwrap();
 
         let dir = tempfile::tempdir().unwrap();
-        let app = Arc::new(AppState::new(dir.path()));
+        let app = Arc::new(AppState::new(dir.path(), pool.clone()));
         app.auth.hydrate(&pool).await.unwrap();
 
         let local_domains = chatmail_types::build_local_domains("local.test", None);

@@ -22,6 +22,7 @@ members = [
     "crates/chatmail-iroh",
     "crates/chatmail-shadowsocks",
     "crates/chatmail-metrics",
+    "crates/chatmail-push",
     "crates/chatmail-tasks",
     "tests",
 ]
@@ -53,6 +54,7 @@ chatmail-turn = { path = "crates/chatmail-turn" }
 chatmail-iroh = { path = "crates/chatmail-iroh" }
 chatmail-shadowsocks = { path = "crates/chatmail-shadowsocks" }
 chatmail-metrics = { path = "crates/chatmail-metrics" }
+chatmail-push = { path = "crates/chatmail-push" }
 chatmail-tasks = { path = "crates/chatmail-tasks" }
 prometheus = "0.14"
 axum = { version = "0.8", features = ["ws"] }

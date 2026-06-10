@@ -121,7 +121,7 @@ Pull-based ingress relays (optional):
 | `device_token` | TEXT |
 | `updated_at` | TIMESTAMP |
 
-PK (`username`, `device_token`). Not in Madmail server DB (client-side in Delta Chat); reserved for future `XDELTAPUSH`.
+PK (`username`, `device_token`). Populated via IMAP `SETMETADATA /private/devicetoken` (`XDELTAPUSH`). Pruned after 90 days without refresh; stale tokens removed on HTTP 410 from `notifications.delta.chat`. See [23-push-notifications.md](23-push-notifications.md).
 
 ## Not replicated (Madmail-only)
 

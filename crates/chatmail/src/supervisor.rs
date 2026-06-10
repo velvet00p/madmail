@@ -185,6 +185,7 @@ impl ServerSupervisor {
             state_dir,
         )
         .await?;
+        let push_enabled = crate::push_boot::push_enabled(&pool).await?;
         let imap_cfg = ImapSessionConfig {
             hostname: hostname.clone(),
             primary_domain: primary_domain.clone(),
@@ -192,6 +193,7 @@ impl ServerSupervisor {
             credential_policy,
             turn: turn_discovery,
             iroh: iroh_discovery,
+            push_enabled,
             starttls_config: None,
         };
 
@@ -538,6 +540,7 @@ impl SupervisorInner {
         self.stop_listeners().await;
         self.reload_turn().await?;
         self.reload_iroh().await?;
+        self.reload_push().await?;
         self.reload_ss().await?;
         self.app.hydrate(&self.pool, &self.file_config).await?;
         self.rebuild_http_routers().await?;
@@ -580,6 +583,13 @@ impl SupervisorInner {
         let started =
             crate::turn_boot::start_turn_server(&self.pool, &self.file_config, &hostname).await?;
         *self.turn_server.lock().await = started;
+        Ok(())
+    }
+
+    /// Apply admin push toggle: refresh IMAP `XDELTAPUSH` / `METADATA` advertisement.
+    async fn reload_push(&self) -> Result<()> {
+        let enabled = crate::push_boot::push_enabled(&self.pool).await?;
+        self.imap_cfg.lock().await.push_enabled = enabled;
         Ok(())
     }
 

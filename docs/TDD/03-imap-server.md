@@ -26,7 +26,7 @@ The Rust rewrite must support at minimum:
 - **APPEND** with **PGP enforcement** on submission paths
 - **Special-use** mailboxes (`\Inbox`, `\Sent`, etc.)
 - **XCHATMAIL** — client detects Chatmail servers
-- Optional: **COMPRESS=DEFLATE**, **CONDSTORE**, **XDELTAPUSH** (Dovecot path)
+- Optional: **COMPRESS=DEFLATE**, **CONDSTORE**, **XDELTAPUSH** (Dovecot/cmdeploy; **chatmail-rs** when push enabled — see [23-push-notifications.md](23-push-notifications.md))
 
 ---
 
@@ -97,7 +97,7 @@ The server uses **`github.com/foxcpp/go-imap`** (fork of emersion/go-imap). Stan
 | Capability | Impact on Delta Chat |
 |------------|---------------------|
 | `CONDSTORE` | Core skips server-side `\Seen` sync via `CHANGEDSINCE` |
-| `XDELTAPUSH` | Core uses SETMETADATA push path only on Dovecot/chatmaild |
+| `XDELTAPUSH` | Not on Madmail Go IMAP; **chatmail-rs** advertises when `__PUSH_MODE__` ≠ `off` |
 
 ### Standard IMAP4rev1 commands (via go-imap-sql backend)
 
@@ -147,7 +147,7 @@ These map to `backend.User` / `backend.Mailbox` methods and are handled by **go-
 | Command | Notes |
 |---------|--------|
 | `SORT` / `THREAD` | Advertised; provided by go-imap-sortthread against backend |
-| `SETMETADATA` | Not at IMAP endpoint; push tokens are Dovecot/cmdeploy concern |
+| `SETMETADATA` | Not on Madmail Go IMAP; Dovecot/cmdeploy + **chatmail-rs** (`/private/devicetoken`) |
 | `SETQUOTA` | Explicitly rejected |
 
 ### Madmail-specific: QUOTA
@@ -333,13 +333,13 @@ Online tests exercise raw `SETMETADATA` / `GETMETADATA` on the dict socket (not 
 | MOVE | Yes | Yes | **Required** |
 | SPECIAL-USE / LIST | Yes | Yes | **Required** |
 | METADATA GET (TURN/Iroh) | Yes (endpoint) | Yes (dict proxy) | **Required** for calls |
-| METADATA SET (push token) | No | Yes (`XDELTAPUSH`) | Optional (push) |
+| METADATA SET (push token) | Yes (`XDELTAPUSH`) | Yes (`XDELTAPUSH`) | Optional (push) |
 | QUOTA | Yes | Yes | Used |
 | CONDSTORE | No | Yes (Dovecot) | Used if present |
 | COMPRESS | Yes | Optional | Used if present |
 | XCHATMAIL | Yes | Yes | Detection |
 | APPEND + PGP | Yes (wrapper) | Policy differs | Tests only |
-| XDELTAPUSH | **Yes (capability)** | Yes | Push on Dovecot; SETMETADATA push path not yet implemented |
+| XDELTAPUSH | **Yes** (cap + SETMETADATA + notify proxy) | Yes | Optional mobile wake-up; see [23-push-notifications.md](23-push-notifications.md) |
 
 ---
 
@@ -404,7 +404,7 @@ From `imap-proto/src/parser/mod.rs` + `imap/src/op/mod.rs`:
 | `COMPRESS=DEFLATE` | Optional | Yes | Optional (`imap_zlib`) |
 | `METADATA` | Not Chatmail keys | GET TURN/Iroh | dict proxy |
 | `XCHATMAIL` | No | Yes | Yes |
-| `XDELTAPUSH` | No | No | Yes |
+| `XDELTAPUSH` | Yes (chatmail-rs) | No | Yes |
 | `IMAP4rev2` | Yes (greeting) | IMAP4rev1 | IMAP4rev1 |
 
 **Conclusion:** The **command checklist in this document (Madmail + Delta Chat client) is complete** for requirements. Stalwart implements a **superset** of commands; chatmail-rs must add **Chatmail-specific** extensions (METADATA keys, `XCHATMAIL`, PGP on APPEND, IDLE notify on deliver) on top of a Stalwart-like `imap-proto` + `op` layout.
@@ -450,6 +450,19 @@ Mirrors Madmail `go-imap-sql/delivery.go` and Delta Chat `context/core/src/imap/
 
 **relay-ping:** `internal/check/imapcheck/idle.go` — `waitInboxGrow` (IDLE + EXISTS), `probeIdleDelivery` (IDLE + second-session APPEND). Cross-delivery and Secure Join start IDLE **before** SMTP submit (core lifecycle).
 
+### `crates/chatmail-imap` — XDELTAPUSH / SETMETADATA (implemented)
+
+When `__PUSH_MODE__` is `auto` or `on`, `CAPABILITY` includes `METADATA` + `XDELTAPUSH`. When `off` (**default**), neither is advertised and `SETMETADATA` is rejected.
+
+| Command | Behavior |
+|---------|----------|
+| `SETMETADATA INBOX (/private/devicetoken "…")` | Upsert token in SQLite `push_tokens` (per user, multiple devices); NIL removes |
+| `GETMETADATA INBOX /private/devicetoken` | Return stored token (RFC 5464 entry list) |
+
+Inbound mail triggers `AppState::notify_inbound_push()` → `chatmail-push` POSTs raw token to `notifications.delta.chat`. Full flow: [23-push-notifications.md](23-push-notifications.md).
+
+**Tests:** `setmetadata_and_getmetadata_devicetoken_roundtrip`, `imap_e2e_push_devicetoken_setmetadata`, `imap_e2e_push_disabled_hides_capabilities`, `setmetadata-devicetoken` (relay-ping).
+
 ### Delta Chat desktop blockers (fixed in `chatmail-imap`)
 
 | Symptom | Cause | Fix |
@@ -465,7 +478,7 @@ After rebuilding chatmail, Delta Chat should pass folder configure and enter **I
 ### Minimum viable server (Delta Chat parity with Madmail)
 
 1. **Session**: AUTH, SELECT, UID FETCH, UID STORE, UID MOVE, CLOSE, LIST, STATUS, IDLE.
-2. **Extensions**: MOVE, SPECIAL-USE, QUOTA (`GETQUOTA`/`GETQUOTAROOT`), METADATA GET (Chatmail keys), `XCHATMAIL`, **`XDELTAPUSH`** (capability advertised; push SETMETADATA optional follow-up).
+2. **Extensions**: MOVE, SPECIAL-USE, QUOTA (`GETQUOTA`/`GETQUOTAROOT`), METADATA GET (Chatmail keys), `XCHATMAIL`, **`XDELTAPUSH`** + `SETMETADATA /private/devicetoken` when push enabled (implemented in chatmail-rs; default **off**).
 3. **APPEND**: With PGP enforcement (mirror `encryptionWrapperUser`).
 4. **IDLE**: Unsolicited `EXISTS` on delivery (SMTP + `/mxdeliv` + local append) — **see table above**.
 5. **JIT**: Account/mailbox creation on first LOGIN (see `05-authentication.md`).
@@ -474,7 +487,7 @@ After rebuilding chatmail, Delta Chat should pass folder configure and enter **I
 
 - `COMPRESS=DEFLATE` (bandwidth)
 - `CONDSTORE` (multi-device seen sync)
-- `SETMETADATA` + `XDELTAPUSH` if replacing Dovecot push path
+- ~~`SETMETADATA` + `XDELTAPUSH`~~ — **done** in chatmail-rs ([23-push-notifications.md](23-push-notifications.md))
 - `APPENDLIMIT` in STATUS (large attachment policy)
 
 ### Crate strategy

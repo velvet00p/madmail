@@ -35,6 +35,7 @@ mod install;
 mod language;
 mod message_size;
 mod port;
+mod push;
 mod registration;
 mod registration_tokens;
 mod reload;

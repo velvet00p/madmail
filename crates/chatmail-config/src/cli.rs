@@ -202,6 +202,22 @@ pub enum Command {
     /// Enable, disable, or inspect WebSMTP HTTP send API.
     #[command(subcommand)]
     Websmtp(ServiceToggleCommand),
+    /// Delta Chat push notifications (`auto` / `on` / `off`).
+    #[command(subcommand)]
+    Push(PushCommand),
+}
+
+/// `madmail push` — `__PUSH_MODE__` (`auto` disables after repeated proxy failures).
+#[derive(Debug, Subcommand, Clone)]
+pub enum PushCommand {
+    /// Show mode, runtime status, and failure counters.
+    Status,
+    /// Auto mode (default): enabled until 5 consecutive notification failures.
+    Auto,
+    /// Force push on (no auto-disable).
+    On,
+    /// Force push off.
+    Off,
 }
 
 /// `chatmail webimap` / `websmtp` — `__WEBIMAP_ENABLED__` / `__WEBSMTP_ENABLED__`.

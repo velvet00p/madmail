@@ -39,6 +39,10 @@ pub const HTTP_PROXY_ENABLED: &str = "__HTTP_PROXY_ENABLED__";
 pub const ADMIN_WEB_ENABLED: &str = "__ADMIN_WEB_ENABLED__";
 pub const WEBIMAP_ENABLED: &str = "__WEBIMAP_ENABLED__";
 pub const WEBSMTP_ENABLED: &str = "__WEBSMTP_ENABLED__";
+/// Delta Chat push (`XDELTAPUSH` + `notifications.delta.chat`) — `/admin/services/push`.
+pub const PUSH_ENABLED: &str = "__PUSH_ENABLED__";
+/// Push mode: `auto` (default), `on`, or `off` — `auto` disables after repeated proxy failures.
+pub const PUSH_MODE: &str = "__PUSH_MODE__";
 pub const FEDERATION_POLICY: &str = "__FEDERATION_POLICY__";
 pub const FEDERATION_ENABLED: &str = "__FEDERATION_ENABLED__";
 

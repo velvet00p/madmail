@@ -64,6 +64,8 @@ pub async fn initialize_state(
     let database = effective_database_config(state_dir, config);
     let db_path = effective_app_db_path(state_dir, config);
     let pool = init_db_from_config(&database).await?;
+    chatmail_push::hydrate_push_stats(&pool).await?;
+    chatmail_push::start_push_stats_flush_task(pool.clone());
     // No routine boot logging under No-Log; DB open failures surface via `?` → stderr.
     let admin_token = resolve_admin_token(state_dir, config)?;
     let artifacts = BootArtifacts {
@@ -92,8 +94,11 @@ pub async fn run(args: Args) -> Result<()> {
         &state_dir,
         default_quota,
         &file_config,
+        pool.clone(),
     ));
     app_state.hydrate(&pool, &file_config).await?;
+    std::fs::create_dir_all(state_dir.join("pending_notifications"))?;
+    app_state.push.requeue_persistent().await;
 
     let flusher = app_state.start_flusher(pool.clone());
 
@@ -158,7 +163,7 @@ mod tests {
             .await
             .unwrap();
         let config = AppConfig::default();
-        let app = AppState::new(artifacts.state_dir.clone());
+        let app = AppState::new(artifacts.state_dir.clone(), pool.clone());
         app.hydrate(&pool, &config).await.unwrap();
 
         let store = &app.mailbox_store;

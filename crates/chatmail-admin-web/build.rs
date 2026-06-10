@@ -23,6 +23,7 @@ fn main() {
     let embed_dst = manifest.join("embed");
 
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=CHATMAIL_ADMIN_WEB_BUILD");
 
     if let Ok(src) = std::env::var("CHATMAIL_ADMIN_WEB_BUILD") {
         let src = PathBuf::from(&src);
@@ -32,6 +33,10 @@ fn main() {
                 fs::remove_dir_all(&embed_dst).ok();
             }
             copy_dir_all(&src, &embed_dst).expect("copy admin-web build into embed/");
+            println!(
+                "cargo:rerun-if-changed={}",
+                embed_dst.join("index.html").display()
+            );
             return;
         }
         println!(

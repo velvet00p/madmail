@@ -22,8 +22,8 @@ use chatmail_db::settings_keys;
 
 use super::{
     accounts, admin_token, admin_web, blocklist_cmd, certificate, delete_cmd, endpoint_cache,
-    federation, html, install, language, message_size, port, registration, registration_tokens,
-    reload, service_toggle, sharing, status_cmd, tasks, uninstall, version,
+    federation, html, install, language, message_size, port, push, registration,
+    registration_tokens, reload, service_toggle, sharing, status_cmd, tasks, uninstall, version,
 };
 
 pub async fn dispatch(cli: &Cli) -> Result<()> {
@@ -82,6 +82,7 @@ pub async fn dispatch(cli: &Cli) -> Result<()> {
             )
             .await
         }
+        Some(Command::Push(cmd)) => push::push(&cli.args, cmd).await,
         Some(Command::Federation(cmd)) => federation::federation(&cli.args, cmd).await,
         Some(Command::RegistrationTokens(cmd)) => {
             registration_tokens::registration_tokens(&cli.args, cmd).await
@@ -102,11 +103,11 @@ pub async fn dispatch(cli: &Cli) -> Result<()> {
 fn not_implemented(cmd: &Command) -> Result<()> {
     let name = command_name(cmd);
     Err(ChatmailError::config(format!(
-        "'chatmail {name}' is not implemented in chatmail-rs yet.\n\
+        "'madmail {name}' is not implemented in chatmail-rs yet.\n\
          See docs/TDD/14-cli-tools.md and context/madmail/docs/chatmail/commands.md.\n\
          Implemented: run, upgrade, update, version, admin-token, admin-web, install, certificate, \
          accounts, ban-list, blocklist, create-user, delete, registration, language, \
-         html-export, html-serve, webimap, websmtp, federation, registration-tokens, sharing, \
+         html-export, html-serve, webimap, websmtp, push, federation, registration-tokens, sharing, \
          status, uninstall, endpoint-cache, port, reload, message-size, tasks"
     )))
 }
@@ -149,6 +150,7 @@ fn command_name(cmd: &Command) -> &'static str {
         Command::Creds => "creds",
         Command::Webimap { .. } => "webimap",
         Command::Websmtp { .. } => "websmtp",
+        Command::Push { .. } => "push",
         Command::MessageSize { .. } => "message-size",
         Command::Tasks { .. } => "tasks",
     }

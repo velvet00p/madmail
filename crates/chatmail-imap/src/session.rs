@@ -57,6 +57,8 @@ pub struct ImapSessionConfig {
     pub turn: Option<TurnDiscovery>,
     /// When set, serve `/shared/vendor/deltachat/irohrelay` (WebXDC realtime).
     pub iroh: Option<IrohDiscovery>,
+    /// Delta Chat push (`XDELTAPUSH` + `SETMETADATA /private/devicetoken`).
+    pub push_enabled: bool,
     /// TLS upgrade on cleartext port 143 (not used on implicit-TLS :993 listeners).
     pub starttls_config: Option<Arc<ServerConfig>>,
 }
@@ -65,6 +67,7 @@ impl ImapSessionConfig {
     pub fn advertise_metadata(&self) -> bool {
         self.turn.as_ref().is_some_and(TurnDiscovery::enabled)
             || self.iroh.as_ref().is_some_and(IrohDiscovery::enabled)
+            || self.push_enabled
     }
 }
 
@@ -310,6 +313,7 @@ impl ImapSession {
                 "* CAPABILITY {}\r\n{t} OK CAPABILITY completed\r\n",
                 capability_string(
                     self.cfg.advertise_metadata(),
+                    self.cfg.push_enabled,
                     self.cfg.starttls_config.is_some() && !tls_active,
                 )
             ))),
@@ -463,12 +467,32 @@ impl ImapSession {
                         "{t} NO [AUTHENTICATIONREQUIRED] login first\r\n"
                     )));
                 }
-                Ok(Some(handle_getmetadata(
-                    t,
-                    args,
-                    self.cfg.turn.as_ref(),
-                    self.cfg.iroh.as_ref(),
-                )))
+                let user = self.require_user()?;
+                Ok(Some(
+                    self.handle_getmetadata(t, args, &user).await?,
+                ))
+            }
+            "SETMETADATA" => {
+                if self.authenticated_user.is_none() {
+                    return Ok(Some(format!(
+                        "{t} NO [AUTHENTICATIONREQUIRED] login first\r\n"
+                    )));
+                }
+                if !self.cfg.push_enabled {
+                    return Ok(Some(format!(
+                        "{t} NO [CANNOT] push notifications disabled\r\n"
+                    )));
+                }
+                if let Some((_, _, non_sync)) = parse_literal_spec(args) {
+                    if !non_sync {
+                        writer.write_all(b"+ Ready\r\n").await?;
+                        writer.flush().await?;
+                    }
+                }
+                let user = self.require_user()?;
+                Ok(Some(
+                    self.handle_setmetadata(lines, t, args, &user).await?,
+                ))
             }
             "LOGOUT" => Ok(None),
             _ => Ok(Some(format!("{t} BAD command not supported\r\n"))),
@@ -937,6 +961,84 @@ impl ImapSession {
         Ok(())
     }
 
+    async fn handle_getmetadata(&self, tag: &str, args: &str, user: &str) -> Result<String> {
+        let (mailbox, keys) = parse_getmetadata_args(args);
+        let mb = imap_quote_mailbox(&mailbox);
+        let mut entries = Vec::new();
+        for key in &keys {
+            if key == chatmail_push::DEVICETOKEN_KEY {
+                if !self.cfg.push_enabled {
+                    continue;
+                }
+                let tokens = chatmail_push::list_device_tokens(&self.pool, user).await?;
+                let joined = tokens.join(" ");
+                entries.push(format_metadata_value(
+                    key,
+                    if joined.is_empty() {
+                        None
+                    } else {
+                        Some(joined.as_str())
+                    },
+                ));
+                continue;
+            }
+            if let Some(v) = shared_metadata_value(key, self.cfg.turn.as_ref(), self.cfg.iroh.as_ref())
+            {
+                entries.push(format_metadata_value(key, v.as_deref()));
+            }
+        }
+        Ok(if entries.is_empty() {
+            format!("{tag} OK GETMETADATA completed\r\n")
+        } else {
+            format!(
+                "* METADATA {mb} ({entries})\r\n{tag} OK GETMETADATA completed\r\n",
+                entries = entries.join(" "),
+            )
+        })
+    }
+
+    async fn handle_setmetadata<R>(
+        &self,
+        lines: &mut BufReader<R>,
+        tag: &str,
+        args: &str,
+        user: &str,
+    ) -> Result<String>
+    where
+        R: tokio::io::AsyncRead + Unpin,
+    {
+        let mailbox = parse_setmetadata_mailbox(args);
+        if !mailbox.eq_ignore_ascii_case("INBOX") {
+            return Ok(format!(
+                "{tag} NO [CANNOT] SETMETADATA only supported on INBOX\r\n"
+            ));
+        }
+        if !args.contains(chatmail_push::DEVICETOKEN_KEY) {
+            return Ok(format!("{tag} BAD unsupported metadata key\r\n"));
+        }
+
+        let token = if let Some((_, size, _)) = parse_literal_spec(args) {
+            if size > 8192 {
+                return Ok(format!("{tag} NO [TOOBIG] device token too long\r\n"));
+            }
+            let mut buf = vec![0u8; size];
+            lines.read_exact(&mut buf).await?;
+            let mut extra = String::new();
+            lines.read_line(&mut extra).await?;
+            String::from_utf8(buf)
+                .map_err(|_| ChatmailError::protocol("invalid device token encoding"))?
+        } else if let Some(quoted) = parse_quoted_devicetoken_value(args) {
+            quoted
+        } else if args.split_whitespace().any(|p| p.eq_ignore_ascii_case("NIL")) {
+            return Ok(format!("{tag} OK SETMETADATA completed\r\n"));
+        } else {
+            return Ok(format!("{tag} BAD invalid SETMETADATA value\r\n"));
+        };
+
+        chatmail_push::upsert_device_token(&self.pool, user, &token).await?;
+        Ok(format!("{tag} OK SETMETADATA completed\r\n"))
+    }
+
     async fn handle_append<R>(
         &mut self,
         lines: &mut BufReader<R>,
@@ -1249,7 +1351,11 @@ fn parse_uid_set_and_mailbox(args: &str) -> Result<(Vec<u32>, String)> {
 }
 
 /// Advertised IMAP capabilities (TDD `03-imap-server.md`: XCHATMAIL, XDELTAPUSH, IDLE, QUOTA, METADATA).
-pub fn capability_string(advertise_metadata: bool, advertise_starttls: bool) -> String {
+pub fn capability_string(
+    advertise_metadata: bool,
+    advertise_push: bool,
+    advertise_starttls: bool,
+) -> String {
     let mut caps = vec![
         "IMAP4rev1",
         "IDLE",
@@ -1259,8 +1365,10 @@ pub fn capability_string(advertise_metadata: bool, advertise_starttls: bool) -> 
         "AUTH=PLAIN",
         "LITERAL+",
         "XCHATMAIL",
-        "XDELTAPUSH",
     ];
+    if advertise_push {
+        caps.push("XDELTAPUSH");
+    }
     if advertise_starttls {
         caps.push("STARTTLS");
     }
@@ -1307,6 +1415,13 @@ fn parse_getmetadata_args(args: &str) -> (String, Vec<String>) {
                 }
             }
         }
+    } else if !rest.is_empty() {
+        for part in rest.split_whitespace() {
+            let k = part.trim().trim_matches('"');
+            if !k.is_empty() {
+                keys.push(k.to_string());
+            }
+        }
     }
     (mailbox, keys)
 }
@@ -1319,7 +1434,31 @@ fn imap_quote_mailbox(name: &str) -> String {
     }
 }
 
-fn metadata_value(
+/// Mailbox name for SETMETADATA (first token only; do not scan value literals).
+fn parse_setmetadata_mailbox(args: &str) -> String {
+    let args = args.trim();
+    if args.starts_with('"') {
+        return parse_mailbox_name(args).unwrap_or_else(|| "INBOX".into());
+    }
+    args.split_whitespace()
+        .next()
+        .unwrap_or("INBOX")
+        .trim_matches('"')
+        .to_string()
+}
+
+fn parse_quoted_devicetoken_value(args: &str) -> Option<String> {
+    let idx = args.find(chatmail_push::DEVICETOKEN_KEY)?;
+    let rest = args[idx + chatmail_push::DEVICETOKEN_KEY.len()..].trim();
+    if !rest.starts_with('"') {
+        return None;
+    }
+    let inner = &rest[1..];
+    let end = inner.find('"')?;
+    Some(inner[..end].to_string())
+}
+
+fn shared_metadata_value(
     key: &str,
     turn: Option<&TurnDiscovery>,
     iroh: Option<&IrohDiscovery>,
@@ -1357,12 +1496,12 @@ fn format_metadata_value(key: &str, value: Option<&str>) -> String {
 
 /// Default GETMETADATA lines for tests (Delta Chat TURN key).
 pub fn turn_metadata_response(turn: &TurnDiscovery) -> String {
-    handle_getmetadata("t0", "(/shared/vendor/deltachat/turn)", Some(turn), None)
+    shared_getmetadata_response("t0", "(/shared/vendor/deltachat/turn)", Some(turn), None)
 }
 
 /// Default GETMETADATA lines for tests (Delta Chat Iroh key).
 pub fn iroh_metadata_response(iroh: &IrohDiscovery) -> String {
-    handle_getmetadata(
+    shared_getmetadata_response(
         "t0",
         "(/shared/vendor/deltachat/irohrelay)",
         None,
@@ -1370,9 +1509,8 @@ pub fn iroh_metadata_response(iroh: &IrohDiscovery) -> String {
     )
 }
 
-/// RFC 5464 solicited response: `* METADATA "" (/key NIL /key2 "value")`
-/// (async-imap `MetadataSolicited`; per-key lines are not parsed).
-fn handle_getmetadata(
+/// RFC 5464 solicited response for shared server keys (TURN/Iroh tests).
+fn shared_getmetadata_response(
     tag: &str,
     args: &str,
     turn: Option<&TurnDiscovery>,
@@ -1383,7 +1521,8 @@ fn handle_getmetadata(
     let entries: Vec<String> = keys
         .iter()
         .filter_map(|key| {
-            metadata_value(key, turn, iroh).map(|v| format_metadata_value(key, v.as_deref()))
+            shared_metadata_value(key, turn, iroh)
+                .map(|v| format_metadata_value(key, v.as_deref()))
         })
         .collect();
     if entries.is_empty() {
@@ -1678,22 +1817,28 @@ mod tests {
     /// P5-UT01: CAPABILITY includes Chatmail extensions (TDD + cmdeploy `test_capabilities`).
     #[test]
     fn p5_ut01_test_capability_includes_chatmail_extensions() {
-        let caps = capability_string(false, false);
+        let caps = capability_string(false, false, false);
         assert!(caps.contains("IMAP4rev1"));
         assert!(caps.contains("IDLE"));
         assert!(caps.contains("QUOTA"));
         assert!(caps.contains("MOVE"));
         assert!(caps.contains("XCHATMAIL"));
-        assert!(caps.contains("XDELTAPUSH"));
+        assert!(
+            !caps.contains("XDELTAPUSH"),
+            "XDELTAPUSH is advertised only when push is enabled"
+        );
         assert!(
             !caps.contains("METADATA"),
-            "METADATA is advertised only when TURN/Iroh discovery is enabled"
+            "METADATA is advertised only when TURN/Iroh/push discovery is enabled"
         );
 
-        let with_starttls = capability_string(false, true);
+        let with_push = capability_string(false, true, false);
+        assert!(with_push.contains("XDELTAPUSH"));
+
+        let with_starttls = capability_string(false, false, true);
         assert!(with_starttls.contains("STARTTLS"));
 
-        let with_metadata = capability_string(true, false);
+        let with_metadata = capability_string(true, false, false);
         assert!(with_metadata.contains("METADATA"));
     }
 
@@ -1843,6 +1988,51 @@ mod tests {
     }
 
     #[test]
+    fn parse_quoted_devicetoken_extracts_value() {
+        let v = parse_quoted_devicetoken_value(
+            r#"INBOX (/private/devicetoken "openpgp:abc123" )"#,
+        )
+        .expect("quoted");
+        assert_eq!(v, "openpgp:abc123");
+    }
+
+    #[tokio::test]
+    async fn setmetadata_and_getmetadata_devicetoken_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = chatmail_db::init_memory_db().await.unwrap();
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
+        let mut session = ImapSession::new(
+            ctx,
+            pool.clone(),
+            ImapSessionConfig {
+                hostname: "imap.test".into(),
+                primary_domain: "test".into(),
+                jit_domain: None,
+                credential_policy: CredentialPolicy::default(),
+                turn: None,
+                iroh: None,
+                push_enabled: true,
+                starttls_config: None,
+            },
+        );
+        session.authenticated_user = Some("u@test".into());
+
+        let wire = br#"INBOX (/private/devicetoken "tok-one" )"#.as_slice();
+        let mut reader = BufReader::new(wire);
+        let resp = session
+            .handle_setmetadata(&mut reader, "s1", r#"INBOX (/private/devicetoken "tok-one" )"#, "u@test")
+            .await
+            .unwrap();
+        assert!(resp.contains("OK SETMETADATA"), "{resp}");
+
+        let get = session
+            .handle_getmetadata("g1", "INBOX /private/devicetoken", "u@test")
+            .await
+            .unwrap();
+        assert!(get.contains("tok-one"), "{get}");
+    }
+
+    #[test]
     fn test_parse_command_tag() {
         let (tag, cmd, _) = parse_command("a001 CAPABILITY");
         assert_eq!(tag, Some("a001"));
@@ -1853,8 +2043,9 @@ mod tests {
     #[tokio::test]
     async fn p5_ut02_test_list_messages_after_write() {
         let dir = tempfile::tempdir().unwrap();
+        let pool = chatmail_db::init_memory_db().await.unwrap();
         let store = MailboxStore::new(dir.path());
-        let ctx = AppState::new(dir.path());
+        let ctx = AppState::new(dir.path(), pool);
         let body = b"From: a@b.test\r\nTo: u@example.org\r\nContent-Type: multipart/encrypted; boundary=b\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nv\r\n--b--\r\n";
         write_blob(&store, "u@example.org", "m1", body)
             .await
@@ -1879,7 +2070,8 @@ mod tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        ));
+        pool.clone(),
+    ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
         assert_eq!(ctx.message_size.effective(), 2048);
 
@@ -1893,6 +2085,7 @@ mod tests {
                 credential_policy: CredentialPolicy::default(),
                 turn: None,
                 iroh: None,
+                push_enabled: true,
                 starttls_config: None,
             },
         );
@@ -1950,7 +2143,7 @@ mod tests {
             ttl_secs: 86400,
             turn_test_relay_only: false,
         };
-        let resp = handle_getmetadata(
+        let resp = shared_getmetadata_response(
             "t1",
             "(/shared/comment /shared/vendor/deltachat/turn)",
             Some(&turn),
@@ -1974,7 +2167,7 @@ mod tests {
             ttl_secs: 60,
             turn_test_relay_only: false,
         };
-        let resp = handle_getmetadata(
+        let resp = shared_getmetadata_response(
             "t1",
             "(/shared/comment /shared/admin /shared/vendor/deltachat/turn)",
             Some(&turn),
@@ -1988,10 +2181,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn p6_ut02_test_quota_quotaroot_format() {
+    #[tokio::test]
+    async fn p6_ut02_test_quota_quotaroot_format() {
         let dir = tempfile::tempdir().unwrap();
-        let ctx = AppState::new(dir.path());
+        let pool = chatmail_db::init_memory_db().await.unwrap();
+        let ctx = AppState::new(dir.path(), pool);
         let resp = format_quota_quotaroot("t1", "INBOX", "u@test", &ctx);
         assert!(resp.contains("QUOTAROOT"));
         assert!(resp.contains("QUOTA \"ROOT\" (STORAGE"));
@@ -2002,7 +2196,8 @@ mod tests {
     #[tokio::test]
     async fn p6_ut02_test_emit_idle_updates_format() {
         let dir = tempfile::tempdir().unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let pool = chatmail_db::init_memory_db().await.unwrap();
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         let body = b"From: a@b.test\r\nTo: u@example.org\r\nContent-Type: multipart/encrypted; boundary=b\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nv\r\n--b--\r\n";
         write_blob(&ctx.mailbox_store, "u@example.org", "m1", body)
             .await
@@ -2018,6 +2213,7 @@ mod tests {
                 credential_policy: CredentialPolicy::default(),
                 turn: None,
                 iroh: None,
+                push_enabled: true,
                 starttls_config: None,
             },
         );
@@ -2055,7 +2251,8 @@ mod tests {
     #[tokio::test]
     async fn p6_ut01_test_idle_receives_delivery_event() {
         let dir = tempfile::tempdir().unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let pool = chatmail_db::init_memory_db().await.unwrap();
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         let mut rx = ctx.events.subscribe("u@example.org");
         let ctx_bg = Arc::clone(&ctx);
         tokio::spawn(async move {
@@ -2108,6 +2305,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
+                push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -2151,7 +2349,7 @@ mod integration_tests {
         chatmail_db::passwords::create_user(&pool, "u@test", &hash)
             .await
             .unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
 
         // A header block (ASCII) followed by a binary body with every byte value, including
         // sequences that are invalid UTF-8 (0xFF, 0xFE, lone continuation bytes, NUL).
@@ -2202,7 +2400,7 @@ mod integration_tests {
         chatmail_db::passwords::create_user(&pool, "u@test", &hash)
             .await
             .unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
 
         let mut body: Vec<u8> = b"From: u@test\r\n\r\n".to_vec();
         body.extend((0u16..=255).map(|b| b as u8));
@@ -2269,6 +2467,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn,
                     iroh,
+                push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -2324,7 +2523,7 @@ mod integration_tests {
             .await
             .unwrap();
 
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         let body = b"From: u@test\r\nTo: u@test\r\nContent-Type: multipart/encrypted; boundary=b\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nv\r\n--b--\r\n";
         write_blob(&ctx.mailbox_store, "u@test", "m1", body)
             .await
@@ -2361,7 +2560,7 @@ mod integration_tests {
         chatmail_db::passwords::create_user(&pool, "u@test", &hash)
             .await
             .unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         let plain = b"From: u@test\r\nSubject: x\r\nContent-Type: text/plain\r\n\r\nn";
         let t = imap_dialog(
             pool,
@@ -2394,7 +2593,8 @@ mod integration_tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        ));
+        pool.clone(),
+    ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
 
         let payload = vec![b'x'; 3000];
@@ -2430,7 +2630,7 @@ mod integration_tests {
         chatmail_db::passwords::create_user(&pool, "u@test", &hash)
             .await
             .unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         let body = large_pgp_mime_body(70_000);
         assert!(
             body.len() >= ctx.mailbox_store.policy().stream_threshold,
@@ -2489,6 +2689,7 @@ mod integration_tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &chatmail_config::AppConfig::default(),
+            pool.clone(),
         ));
         // Replace store with lower threshold for this test.
         let store = chatmail_storage::MailboxStore::with_policy(dir.path(), policy);
@@ -2516,6 +2717,7 @@ mod integration_tests {
                 credential_policy: CredentialPolicy::default(),
                 turn: None,
                 iroh: None,
+                push_enabled: true,
                 starttls_config: None,
             },
         );
@@ -2559,7 +2761,7 @@ mod integration_tests {
             .await
             .unwrap();
 
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         ctx.auth.hydrate(&pool).await.unwrap();
         let body = b"From: u@test\r\nTo: u@test\r\nContent-Type: multipart/encrypted; boundary=b\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nv\r\n--b--\r\n";
         write_blob(&ctx.mailbox_store, "u@test", "m1", body)
@@ -2585,6 +2787,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
+                push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -2655,7 +2858,7 @@ mod integration_tests {
             .await
             .unwrap();
 
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         ctx.auth.hydrate(&pool).await.unwrap();
         let body = b"From: u@test\r\nTo: u@test\r\nContent-Type: multipart/encrypted; boundary=b\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nv\r\n--b--\r\n";
         write_blob(&ctx.mailbox_store, "u@test", "m1", body)
@@ -2681,6 +2884,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
+                push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -2751,7 +2955,7 @@ mod integration_tests {
         chatmail_db::passwords::create_user(&pool, "u@test", &hash)
             .await
             .unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         ctx.auth.hydrate(&pool).await.unwrap();
         let body = b"From: u@test\r\nTo: u@test\r\nContent-Type: multipart/encrypted; boundary=b\r\n\r\n--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nv\r\n--b--\r\n";
         // First message already in the mailbox.
@@ -2778,6 +2982,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
+                push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -2849,7 +3054,7 @@ mod integration_tests {
         chatmail_db::passwords::create_user(&pool, "u@test", &hash)
             .await
             .unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
 
         let turn = TurnDiscovery {
             server: "turn.test".into(),
@@ -2906,7 +3111,7 @@ mod integration_tests {
     async fn imap_dialog_starttls(script: &[&str]) -> String {
         let dir = tempfile::tempdir().unwrap();
         let pool = chatmail_db::init_memory_db().await.unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         ctx.auth.hydrate(&pool).await.unwrap();
 
         let (tls_server, _) = loopback_tls_configs();
@@ -2929,6 +3134,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
+                push_enabled: true,
                     starttls_config: Some(tls_server),
                 },
             );
@@ -2995,7 +3201,7 @@ mod integration_tests {
         chatmail_db::passwords::create_user(&pool, "u@test", &hash)
             .await
             .unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         ctx.auth.hydrate(&pool).await.unwrap();
 
         let (tls_server, tls_client) = loopback_tls_configs();
@@ -3018,6 +3224,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
+                push_enabled: true,
                     starttls_config: Some(tls_server),
                 },
             );
@@ -3103,7 +3310,7 @@ mod integration_tests {
 
         let dir = tempfile::tempdir().unwrap();
         let pool = chatmail_db::init_memory_db().await.unwrap();
-        let ctx = Arc::new(AppState::new(dir.path()));
+        let ctx = Arc::new(AppState::new(dir.path(), pool.clone()));
         ctx.auth.hydrate(&pool).await.unwrap();
 
         let (tls_server, tls_client) = loopback_tls_configs();
@@ -3128,6 +3335,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
+                push_enabled: true,
                     starttls_config: None,
                 },
             );

@@ -172,7 +172,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let state = Arc::new(AppState::new(dir.path()));
+        let state = Arc::new(AppState::new(dir.path(), pool.clone()));
         state.auth.hydrate(&pool).await.unwrap();
         let ctx = AuthContext {
             pool,

@@ -73,9 +73,19 @@ pub struct TurnTestStack {
     pub _server: TurnServerHandle,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 pub struct MailServersOpts {
     pub turn: bool,
+    pub push_enabled: bool,
+}
+
+impl Default for MailServersOpts {
+    fn default() -> Self {
+        Self {
+            turn: false,
+            push_enabled: true,
+        }
+    }
 }
 
 pub async fn spawn_mail_servers(dir: &std::path::Path) -> MailServers {
@@ -90,7 +100,15 @@ pub async fn spawn_mail_servers_opts(dir: &std::path::Path, opts: MailServersOpt
     chatmail_db::set_setting(&pool, chatmail_db::settings_keys::WEBSMTP_ENABLED, "true")
         .await
         .expect("websmtp");
-    let ctx = Arc::new(AppState::new(dir));
+    if !opts.push_enabled {
+        chatmail_db::set_setting(&pool, chatmail_db::settings_keys::PUSH_ENABLED, "false")
+            .await
+            .expect("push off");
+    }
+    let push_enabled = chatmail_push::push_runtime_enabled(&pool)
+        .await
+        .unwrap_or(opts.push_enabled);
+    let ctx = Arc::new(AppState::new(dir, pool.clone()));
 
     let app_config = AppConfig {
         hostname: Some("test".into()),
@@ -184,6 +202,7 @@ pub async fn spawn_mail_servers_opts(dir: &std::path::Path, opts: MailServersOpt
 
     let pool_imap = pool.clone();
     let ctx_imap = Arc::clone(&ctx);
+    let imap_push = push_enabled;
     tokio::spawn(async move {
         let listener = TcpListener::from_std(imap_listener).expect("imap tokio");
         loop {
@@ -204,6 +223,7 @@ pub async fn spawn_mail_servers_opts(dir: &std::path::Path, opts: MailServersOpt
                         credential_policy: chatmail_config::CredentialPolicy::default(),
                         turn,
                         iroh: None,
+                        push_enabled: imap_push,
                         starttls_config: None,
                     },
                 );

@@ -24,6 +24,7 @@ use chatmail_config::DEFAULT_MAX_MESSAGE_BYTES;
 use chatmail_db::{
     init_memory_db, message_stats_snapshot, record_smtp_accepted, seed_install_defaults,
 };
+use chatmail_push::{push_stats_snapshot, record_successful_delivery};
 use chatmail_state::AppState;
 use serde_json::json;
 use tempfile::TempDir;
@@ -39,6 +40,7 @@ async fn test_state(token: &str, file_config: AppConfig) -> (AdminState, TempDir
         dir.path(),
         chatmail_config::DEFAULT_QUOTA_BYTES,
         &file_config,
+        pool.clone(),
     ));
     app.hydrate(&pool, &file_config).await.unwrap();
     let st = AdminState::new(
@@ -107,6 +109,93 @@ async fn p9_shadowsocks_configured_toggle() {
         body.unwrap().get("status").and_then(|v| v.as_str()),
         Some("disabled")
     );
+}
+
+#[tokio::test]
+async fn p9_push_service_toggle() {
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
+    )
+    .await;
+
+    let (_, body) = resources::dispatch(&st, "GET", "/admin/services/push", &json!({}))
+        .await
+        .unwrap();
+    let body = body.unwrap();
+    assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("disabled"));
+    assert_eq!(body.get("mode").and_then(|v| v.as_str()), Some("off"));
+    assert!(
+        body.get("successful_notifications")
+            .and_then(|v| v.as_i64())
+            .is_some()
+    );
+
+    let (_, body) = resources::dispatch(
+        &st,
+        "POST",
+        "/admin/services/push",
+        &json!({ "action": "auto" }),
+    )
+    .await
+    .unwrap();
+    let body = body.unwrap();
+    assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("enabled"));
+    assert_eq!(body.get("mode").and_then(|v| v.as_str()), Some("auto"));
+
+    let (_, body) = resources::dispatch(
+        &st,
+        "POST",
+        "/admin/services/push",
+        &json!({ "action": "disable" }),
+    )
+    .await
+    .unwrap();
+    let body = body.unwrap();
+    assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("disabled"));
+    assert_eq!(body.get("mode").and_then(|v| v.as_str()), Some("off"));
+    assert_eq!(
+        body.get("restart_required").and_then(|v| v.as_bool()),
+        Some(true)
+    );
+
+    let (_, body) = resources::dispatch(
+        &st,
+        "POST",
+        "/admin/services/push",
+        &json!({ "action": "auto" }),
+    )
+    .await
+    .unwrap();
+    let body = body.unwrap();
+    assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("enabled"));
+    assert_eq!(body.get("mode").and_then(|v| v.as_str()), Some("auto"));
+}
+
+#[tokio::test]
+async fn p9_status_push_stats() {
+    let (st, _dir) = test_state(
+        "secret-token-01234567890123456789012345678901",
+        AppConfig::default(),
+    )
+    .await;
+    let before = push_stats_snapshot();
+    record_successful_delivery();
+    record_successful_delivery();
+    record_successful_delivery();
+
+    let (_, body) = resources::dispatch(&st, "GET", "/admin/status", &json!({}))
+        .await
+        .unwrap();
+    let body = body.unwrap();
+    let push = body.get("push").expect("push block");
+    assert_eq!(push.get("enabled").and_then(|v| v.as_bool()), Some(false));
+    assert_eq!(
+        push.get("successful_notifications")
+            .and_then(|v| v.as_i64()),
+        Some(before + 3)
+    );
+    assert_eq!(push_stats_snapshot(), before + 3);
 }
 
 #[tokio::test]

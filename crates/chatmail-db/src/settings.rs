@@ -214,6 +214,8 @@ pub async fn seed_install_defaults(pool: &DbPool) -> Result<()> {
         DEFAULT_MAX_MESSAGE_SIZE,
     )
     .await?;
+    seed_string_if_unset(pool, settings_keys::PUSH_MODE, "off").await?;
+    seed_bool_if_unset(pool, settings_keys::PUSH_ENABLED, false).await?;
     Ok(())
 }
 
