@@ -85,7 +85,11 @@ impl PushNotifier {
                     let _ = tokio::fs::remove_file(&path).await;
                     continue;
                 };
-                let job = PersistentJob { path, username, token };
+                let job = PersistentJob {
+                    path,
+                    username,
+                    token,
+                };
                 n.spawn_notify_chain(job, 0);
             }
         });
@@ -178,8 +182,8 @@ impl PushNotifier {
                         return;
                     }
                     if code == reqwest::StatusCode::GONE {
-                        let _ = remove_device_token(&self.inner.pool, &job.username, &job.token)
-                            .await;
+                        let _ =
+                            remove_device_token(&self.inner.pool, &job.username, &job.token).await;
                         let _ = tokio::fs::remove_file(&job.path).await;
                         tracing::info!(user = %job.username, "removed stale push token (410 Gone)");
                         record_delivery_failure(&self.inner.pool).await;
@@ -187,7 +191,9 @@ impl PushNotifier {
                     }
                     tracing::warn!(user = %job.username, status = %code, "push notification HTTP error");
                 }
-                Err(e) => tracing::warn!(user = %job.username, error = %e, "push notification request failed"),
+                Err(e) => {
+                    tracing::warn!(user = %job.username, error = %e, "push notification request failed")
+                }
             }
 
             retry = retry.saturating_add(1);

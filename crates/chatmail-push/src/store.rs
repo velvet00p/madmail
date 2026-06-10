@@ -106,6 +106,9 @@ mod tests {
         let pool = init_memory_db().await.unwrap();
         upsert_device_token(&pool, "u@test", "tok1").await.unwrap();
         remove_device_token(&pool, "u@test", "tok1").await.unwrap();
-        assert!(list_device_tokens(&pool, "u@test").await.unwrap().is_empty());
+        assert!(list_device_tokens(&pool, "u@test")
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

@@ -1002,8 +1002,8 @@ mod tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        pool.clone(),
-    ));
+            pool.clone(),
+        ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
 
         let payload = "x".repeat(3000);
@@ -1048,8 +1048,8 @@ mod tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        pool.clone(),
-    ));
+            pool.clone(),
+        ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
 
         let t = smtp_dialog(
@@ -1085,8 +1085,8 @@ mod tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        pool.clone(),
-    ));
+            pool.clone(),
+        ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
 
         let t = smtp_dialog(
@@ -1259,7 +1259,10 @@ mod tests {
     async fn starttls_ehlo_advertises_starttls_before_tls() {
         let pool = chatmail_db::init_memory_db().await.unwrap();
         let s = SmtpSession::new(
-            Arc::new(chatmail_state::AppState::new(std::env::temp_dir(), pool.clone())),
+            Arc::new(chatmail_state::AppState::new(
+                std::env::temp_dir(),
+                pool.clone(),
+            )),
             pool,
             SmtpSessionConfig {
                 hostname: "mx.test".into(),

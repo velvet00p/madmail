@@ -468,9 +468,7 @@ impl ImapSession {
                     )));
                 }
                 let user = self.require_user()?;
-                Ok(Some(
-                    self.handle_getmetadata(t, args, &user).await?,
-                ))
+                Ok(Some(self.handle_getmetadata(t, args, &user).await?))
             }
             "SETMETADATA" => {
                 if self.authenticated_user.is_none() {
@@ -490,9 +488,7 @@ impl ImapSession {
                     }
                 }
                 let user = self.require_user()?;
-                Ok(Some(
-                    self.handle_setmetadata(lines, t, args, &user).await?,
-                ))
+                Ok(Some(self.handle_setmetadata(lines, t, args, &user).await?))
             }
             "LOGOUT" => Ok(None),
             _ => Ok(Some(format!("{t} BAD command not supported\r\n"))),
@@ -982,7 +978,8 @@ impl ImapSession {
                 ));
                 continue;
             }
-            if let Some(v) = shared_metadata_value(key, self.cfg.turn.as_ref(), self.cfg.iroh.as_ref())
+            if let Some(v) =
+                shared_metadata_value(key, self.cfg.turn.as_ref(), self.cfg.iroh.as_ref())
             {
                 entries.push(format_metadata_value(key, v.as_deref()));
             }
@@ -1029,7 +1026,10 @@ impl ImapSession {
                 .map_err(|_| ChatmailError::protocol("invalid device token encoding"))?
         } else if let Some(quoted) = parse_quoted_devicetoken_value(args) {
             quoted
-        } else if args.split_whitespace().any(|p| p.eq_ignore_ascii_case("NIL")) {
+        } else if args
+            .split_whitespace()
+            .any(|p| p.eq_ignore_ascii_case("NIL"))
+        {
             return Ok(format!("{tag} OK SETMETADATA completed\r\n"));
         } else {
             return Ok(format!("{tag} BAD invalid SETMETADATA value\r\n"));
@@ -1521,8 +1521,7 @@ fn shared_getmetadata_response(
     let entries: Vec<String> = keys
         .iter()
         .filter_map(|key| {
-            shared_metadata_value(key, turn, iroh)
-                .map(|v| format_metadata_value(key, v.as_deref()))
+            shared_metadata_value(key, turn, iroh).map(|v| format_metadata_value(key, v.as_deref()))
         })
         .collect();
     if entries.is_empty() {
@@ -1989,10 +1988,8 @@ mod tests {
 
     #[test]
     fn parse_quoted_devicetoken_extracts_value() {
-        let v = parse_quoted_devicetoken_value(
-            r#"INBOX (/private/devicetoken "openpgp:abc123" )"#,
-        )
-        .expect("quoted");
+        let v = parse_quoted_devicetoken_value(r#"INBOX (/private/devicetoken "openpgp:abc123" )"#)
+            .expect("quoted");
         assert_eq!(v, "openpgp:abc123");
     }
 
@@ -2020,7 +2017,12 @@ mod tests {
         let wire = br#"INBOX (/private/devicetoken "tok-one" )"#.as_slice();
         let mut reader = BufReader::new(wire);
         let resp = session
-            .handle_setmetadata(&mut reader, "s1", r#"INBOX (/private/devicetoken "tok-one" )"#, "u@test")
+            .handle_setmetadata(
+                &mut reader,
+                "s1",
+                r#"INBOX (/private/devicetoken "tok-one" )"#,
+                "u@test",
+            )
             .await
             .unwrap();
         assert!(resp.contains("OK SETMETADATA"), "{resp}");
@@ -2070,8 +2072,8 @@ mod tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        pool.clone(),
-    ));
+            pool.clone(),
+        ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
         assert_eq!(ctx.message_size.effective(), 2048);
 
@@ -2305,7 +2307,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
-                push_enabled: true,
+                    push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -2467,7 +2469,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn,
                     iroh,
-                push_enabled: true,
+                    push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -2593,8 +2595,8 @@ mod integration_tests {
             dir.path(),
             chatmail_config::DEFAULT_QUOTA_BYTES,
             &cfg,
-        pool.clone(),
-    ));
+            pool.clone(),
+        ));
         ctx.hydrate(&pool, &cfg).await.unwrap();
 
         let payload = vec![b'x'; 3000];
@@ -2787,7 +2789,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
-                push_enabled: true,
+                    push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -2884,7 +2886,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
-                push_enabled: true,
+                    push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -2982,7 +2984,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
-                push_enabled: true,
+                    push_enabled: true,
                     starttls_config: None,
                 },
             );
@@ -3134,7 +3136,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
-                push_enabled: true,
+                    push_enabled: true,
                     starttls_config: Some(tls_server),
                 },
             );
@@ -3224,7 +3226,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
-                push_enabled: true,
+                    push_enabled: true,
                     starttls_config: Some(tls_server),
                 },
             );
@@ -3335,7 +3337,7 @@ mod integration_tests {
                     credential_policy: CredentialPolicy::default(),
                     turn: None,
                     iroh: None,
-                push_enabled: true,
+                    push_enabled: true,
                     starttls_config: None,
                 },
             );

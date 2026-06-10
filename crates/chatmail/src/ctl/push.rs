@@ -34,10 +34,7 @@ async fn status(pool: &chatmail_db::DbPool) -> Result<()> {
         "  Runtime:    {}",
         if enabled { "enabled" } else { "disabled" }
     );
-    println!(
-        "  Successful: {}",
-        push_stats_snapshot()
-    );
+    println!("  Successful: {}", push_stats_snapshot());
     println!(
         "  Failures:   {} (auto disables at {})",
         consecutive_failures(),

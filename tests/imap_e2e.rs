@@ -515,7 +515,9 @@ async fn imap_e2e_push_devicetoken_setmetadata() {
         .await;
     assert!(set.contains("OK SETMETADATA"), "set: {set}");
 
-    let get = c.command("p004 GETMETADATA INBOX /private/devicetoken").await;
+    let get = c
+        .command("p004 GETMETADATA INBOX /private/devicetoken")
+        .await;
     assert!(
         get.contains("openpgp:relay-ping-token"),
         "get devicetoken: {get}"
@@ -526,7 +528,9 @@ async fn imap_e2e_push_devicetoken_setmetadata() {
         .command(r#"p005 SETMETADATA INBOX (/private/devicetoken "openpgp:second-token" )"#)
         .await;
     assert!(set2.contains("OK SETMETADATA"), "set2: {set2}");
-    let get2 = c.command("p006 GETMETADATA INBOX /private/devicetoken").await;
+    let get2 = c
+        .command("p006 GETMETADATA INBOX /private/devicetoken")
+        .await;
     assert!(get2.contains("openpgp:relay-ping-token"), "token1: {get2}");
     assert!(get2.contains("openpgp:second-token"), "token2: {get2}");
 }

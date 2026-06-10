@@ -19,10 +19,10 @@ pub mod admin;
 pub mod boot;
 pub mod ctl;
 pub mod iroh_boot;
-pub mod push_boot;
 pub mod logging;
 #[cfg(feature = "pprof")]
 pub mod profiling;
+pub mod push_boot;
 pub mod servers;
 pub mod ss_boot;
 pub mod supervisor;

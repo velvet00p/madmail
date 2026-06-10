@@ -260,11 +260,7 @@ async fn binary_download_route_serves_current_executable() {
     let pool = init_memory_db().await.unwrap();
     let dir = tempfile::tempdir().unwrap();
     let app_state = Arc::new(AppState::new(dir.path(), pool.clone()));
-    let app = crate::www_router(crate::WwwState::new(
-        pool,
-        app_state,
-        AppConfig::default(),
-    ));
+    let app = crate::www_router(crate::WwwState::new(pool, app_state, AppConfig::default()));
 
     let resp = app
         .oneshot(
@@ -399,11 +395,7 @@ async fn www_state_constructs() {
     let pool = init_memory_db().await.unwrap();
     let dir = tempfile::tempdir().unwrap();
     let app = Arc::new(AppState::new(dir.path(), pool.clone()));
-    let _state = crate::WwwState::new(
-        pool,
-        app,
-        AppConfig::default(),
-    );
+    let _state = crate::WwwState::new(pool, app, AppConfig::default());
 }
 
 #[test]

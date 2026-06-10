@@ -42,10 +42,7 @@ pub async fn service(st: &AdminState, method: &str, body: &Value) -> super::Admi
                 "disable" | "off" => PushMode::Off,
                 "auto" => PushMode::Auto,
                 _ => {
-                    return Err((
-                        400,
-                        "action must be enable, disable, or auto".into(),
-                    ));
+                    return Err((400, "action must be enable, disable, or auto".into()));
                 }
             };
             set_push_mode(&st.pool, mode).await.map_err(db_err)?;

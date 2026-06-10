@@ -123,13 +123,15 @@ async fn p9_push_service_toggle() {
         .await
         .unwrap();
     let body = body.unwrap();
-    assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("disabled"));
-    assert_eq!(body.get("mode").and_then(|v| v.as_str()), Some("off"));
-    assert!(
-        body.get("successful_notifications")
-            .and_then(|v| v.as_i64())
-            .is_some()
+    assert_eq!(
+        body.get("status").and_then(|v| v.as_str()),
+        Some("disabled")
     );
+    assert_eq!(body.get("mode").and_then(|v| v.as_str()), Some("off"));
+    assert!(body
+        .get("successful_notifications")
+        .and_then(|v| v.as_i64())
+        .is_some());
 
     let (_, body) = resources::dispatch(
         &st,
@@ -152,7 +154,10 @@ async fn p9_push_service_toggle() {
     .await
     .unwrap();
     let body = body.unwrap();
-    assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("disabled"));
+    assert_eq!(
+        body.get("status").and_then(|v| v.as_str()),
+        Some("disabled")
+    );
     assert_eq!(body.get("mode").and_then(|v| v.as_str()), Some("off"));
     assert_eq!(
         body.get("restart_required").and_then(|v| v.as_bool()),
