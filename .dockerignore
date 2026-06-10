@@ -1,0 +1,29 @@
+# Build artifacts
+target/
+build/
+data/
+
+# Dependencies
+node_modules/
+external/madmail-admin-web/node_modules/
+external/madmail-admin-web/.svelte-kit/
+external/madmail-admin-web/build/
+crates/chatmail-admin-web/embed/
+
+# Git
+.git/
+.gitmodules
+
+# Tests and local tooling (keep Cargo.toml — workspace member required for cargo build)
+tests/**
+!tests/Cargo.toml
+context/
+scripts/
+tmp/
+
+# Secrets and editor
+.env
+.idea/
+.vscode/
+.DS_Store
+*.swp
