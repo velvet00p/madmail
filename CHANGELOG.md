@@ -1,3 +1,10 @@
+## [2.3.1](https://github.com/themadorg/madmail/compare/v2.3.0...v2.3.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* rename chatmail to madmail across the codebase ([53944b9](https://github.com/themadorg/madmail/commit/53944b9d16cd31ee04af30f3b24899d0ae016c15))
+
 # [2.3.0](https://github.com/themadorg/madmail/compare/v2.2.2...v2.3.0) (2026-06-09)
 
 
