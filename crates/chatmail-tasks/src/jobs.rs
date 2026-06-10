@@ -29,6 +29,7 @@ use chatmail_storage::{
 };
 use chatmail_types::{ChatmailError, Result};
 
+use crate::cert_renew::{CertRenewOutcome, CertificateRenewer};
 use crate::config::MaintenanceConfig;
 
 /// Named maintenance job (CLI + scheduler).
@@ -38,6 +39,7 @@ pub enum TaskId {
     PruneUnusedAccounts,
     PurgeSeenMessages,
     PruneUnreadOlder,
+    RenewCertificate,
 }
 
 impl TaskId {
@@ -46,6 +48,7 @@ impl TaskId {
         TaskId::PruneUnusedAccounts,
         TaskId::PurgeSeenMessages,
         TaskId::PruneUnreadOlder,
+        TaskId::RenewCertificate,
     ];
 
     pub fn parse(s: &str) -> Option<Self> {
@@ -56,6 +59,9 @@ impl TaskId {
             }
             "purge-seen" | "purge-read" | "auto-purge-seen" => Some(TaskId::PurgeSeenMessages),
             "prune-unread-older" | "purge-unread-older" => Some(TaskId::PruneUnreadOlder),
+            "renew-certificate" | "certificate-renew" | "renew-cert" => {
+                Some(TaskId::RenewCertificate)
+            }
             _ => None,
         }
     }
@@ -66,6 +72,7 @@ impl TaskId {
             TaskId::PruneUnusedAccounts => "prune-unused-accounts",
             TaskId::PurgeSeenMessages => "purge-seen",
             TaskId::PruneUnreadOlder => "prune-unread-older",
+            TaskId::RenewCertificate => "renew-certificate",
         }
     }
 
@@ -79,6 +86,9 @@ impl TaskId {
             }
             TaskId::PurgeSeenMessages => "Delete maildir cur/ (seen) messages",
             TaskId::PruneUnreadOlder => "Delete maildir new/ messages older than --retention",
+            TaskId::RenewCertificate => {
+                "Renew Let's Encrypt TLS certificate when autocert is enabled (IP: <4d left, DNS: <30d)"
+            }
         }
     }
 }
@@ -126,7 +136,16 @@ pub async fn run_task(
             })?;
             prune_unread_older_job(ctx, retention).await
         }
+        TaskId::RenewCertificate => {
+            Err(ChatmailError::config(
+                "renew-certificate must run inside the server process (scheduled daily) or use `madmail certificate get`",
+            ))
+        }
     }
+}
+
+pub async fn run_certificate_renewal(renewer: &dyn CertificateRenewer) -> Result<CertRenewOutcome> {
+    renewer.renew_if_needed().await
 }
 
 /// Run all jobs that are enabled by static config (ignores DB auto-purge toggle).

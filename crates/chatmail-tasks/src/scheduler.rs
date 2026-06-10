@@ -17,16 +17,23 @@
 
 //! In-process maintenance scheduler (started with `chatmail run`).
 
+use std::sync::Arc;
+
 use chatmail_config::AppConfig;
 use chatmail_db::DbPool;
 use chatmail_storage::MailboxStore;
 use std::path::Path;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
-use crate::config::{MaintenanceConfig, AUTO_PURGE_SEEN_INTERVAL, PERIODIC_INTERVAL};
-use crate::jobs::{run_all_configured, run_auto_purge_seen_if_enabled, TaskContext};
+use crate::cert_renew::CertificateRenewer;
+use crate::config::{
+    MaintenanceConfig, AUTO_PURGE_SEEN_INTERVAL, CERT_RENEWAL_INTERVAL, PERIODIC_INTERVAL,
+};
+use crate::jobs::{
+    run_all_configured, run_auto_purge_seen_if_enabled, run_certificate_renewal, TaskContext,
+};
 
 pub struct MaintenanceHandle {
     cancel: CancellationToken,
@@ -43,11 +50,12 @@ impl MaintenanceHandle {
     }
 }
 
-/// Background loops: hourly retention/unused-account jobs + 15s auto-purge seen (when enabled in DB).
+/// Background loops: hourly retention jobs, 15s auto-purge seen, daily autocert renewal.
 pub fn spawn_maintenance_scheduler(
     pool: DbPool,
     state_dir: &Path,
     file_config: &AppConfig,
+    cert_renewer: Option<Arc<dyn CertificateRenewer>>,
 ) -> MaintenanceHandle {
     let cancel = CancellationToken::new();
     let cancel_child = cancel.clone();
@@ -68,10 +76,18 @@ pub fn spawn_maintenance_scheduler(
         periodic_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut seen_tick = tokio::time::interval(AUTO_PURGE_SEEN_INTERVAL);
         seen_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut cert_tick = cert_renewer.as_ref().map(|_| {
+            let mut tick = tokio::time::interval(CERT_RENEWAL_INTERVAL);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            tick
+        });
 
-        // First periodic run after one interval (Madmail starts ticker then waits).
+        // First run after one interval (Madmail starts ticker then waits).
         periodic_tick.tick().await;
         seen_tick.tick().await;
+        if let Some(tick) = cert_tick.as_mut() {
+            tick.tick().await;
+        }
 
         loop {
             tokio::select! {
@@ -107,6 +123,32 @@ pub fn spawn_maintenance_scheduler(
                         }
                         Ok(_) => {}
                         Err(e) => error!("auto-purge seen failed: {e}"),
+                    }
+                }
+                _ = async {
+                    if let Some(tick) = cert_tick.as_mut() {
+                        tick.tick().await;
+                    } else {
+                        std::future::pending::<()>().await;
+                    }
+                }, if cert_renewer.is_some() => {
+                    if let Some(renewer) = cert_renewer.as_ref() {
+                        match run_certificate_renewal(renewer.as_ref()).await {
+                            Ok(outcome) if outcome.skipped => {
+                                debug!(
+                                    detail = ?outcome.detail,
+                                    "certificate renewal: skipped"
+                                );
+                            }
+                            Ok(outcome) if outcome.renewed => {
+                                info!(
+                                    detail = ?outcome.detail,
+                                    "certificate renewal: completed"
+                                );
+                            }
+                            Ok(_) => {}
+                            Err(e) => error!("certificate renewal failed: {e}"),
+                        }
                     }
                 }
             }

@@ -40,6 +40,7 @@ chatmail-shadowsocks = { workspace = true }
 chatmail-metrics = { workspace = true }
 chatmail-push = { workspace = true }
 chatmail-tasks = { workspace = true }
+async-trait = { workspace = true }
 base64 = "0.22"
 clap = { workspace = true }
 ed25519-dalek = { version = "2", default-features = false, features = ["std"] }

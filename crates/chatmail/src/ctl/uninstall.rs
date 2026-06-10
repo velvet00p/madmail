@@ -46,6 +46,8 @@ struct UninstallPlan {
     /// systemd unit basenames (without `.service`), e.g. `madmail`, `madmail-new`.
     service_names: Vec<String>,
     service_files: Vec<PathBuf>,
+    timer_names: Vec<String>,
+    timer_files: Vec<PathBuf>,
     config_dirs: Vec<PathBuf>,
     state_dirs: Vec<PathBuf>,
     binary_paths: Vec<PathBuf>,
@@ -158,6 +160,8 @@ fn detect_installation(ctx: &CtlContext, primary: &str) -> Result<UninstallPlan>
 
     let mut service_names = BTreeSet::new();
     let mut service_files = BTreeSet::new();
+    let mut timer_names = BTreeSet::new();
+    let mut timer_files = BTreeSet::new();
 
     for base in SYSTEMD_UNIT_DIRS {
         let dir = Path::new(base);
@@ -172,16 +176,23 @@ fn detect_installation(ctx: &CtlContext, primary: &str) -> Result<UninstallPlan>
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if !name.ends_with(".service") {
-                continue;
+            if name.ends_with(".service") {
+                let stem = name.strip_suffix(".service").unwrap_or(name);
+                if !is_family_unit_stem(stem) {
+                    continue;
+                }
+                service_names.insert(stem.to_string());
+                service_files.insert(path);
+                plan.installation_found = true;
+            } else if name.ends_with(".timer") {
+                let stem = name.strip_suffix(".timer").unwrap_or(name);
+                if !is_family_unit_stem(stem) {
+                    continue;
+                }
+                timer_names.insert(stem.to_string());
+                timer_files.insert(path);
+                plan.installation_found = true;
             }
-            let stem = name.strip_suffix(".service").unwrap_or(name);
-            if !is_family_unit_stem(stem) {
-                continue;
-            }
-            service_names.insert(stem.to_string());
-            service_files.insert(path);
-            plan.installation_found = true;
         }
     }
 
@@ -194,6 +205,8 @@ fn detect_installation(ctx: &CtlContext, primary: &str) -> Result<UninstallPlan>
 
     plan.service_names = service_names.into_iter().collect();
     plan.service_files = service_files.into_iter().collect();
+    plan.timer_names = timer_names.into_iter().collect();
+    plan.timer_files = timer_files.into_iter().collect();
 
     for dir in discover_family_dirs("/etc", &["madmail", "chatmail"]) {
         push_unique_path(&mut plan.config_dirs, dir);
@@ -373,6 +386,9 @@ fn show_plan(plan: &UninstallPlan, flags: &UninstallArgs) {
 }
 
 fn stop_services(plan: &UninstallPlan, flags: &UninstallArgs) -> Result<()> {
+    for name in &plan.timer_names {
+        run_systemctl(flags.dry_run, &["stop", name])?;
+    }
     for name in &plan.service_names {
         run_systemctl(flags.dry_run, &["stop", name])?;
         if !flags.dry_run {
@@ -383,6 +399,9 @@ fn stop_services(plan: &UninstallPlan, flags: &UninstallArgs) -> Result<()> {
 }
 
 fn disable_services(plan: &UninstallPlan, flags: &UninstallArgs) -> Result<()> {
+    for name in &plan.timer_names {
+        run_systemctl(flags.dry_run, &["disable", name])?;
+    }
     for name in &plan.service_names {
         run_systemctl(flags.dry_run, &["disable", name])?;
     }
@@ -390,6 +409,9 @@ fn disable_services(plan: &UninstallPlan, flags: &UninstallArgs) -> Result<()> {
 }
 
 fn remove_systemd_files(plan: &UninstallPlan, flags: &UninstallArgs) -> Result<()> {
+    for f in &plan.timer_files {
+        remove_path(f, flags.dry_run)?;
+    }
     for f in &plan.service_files {
         remove_path(f, flags.dry_run)?;
     }

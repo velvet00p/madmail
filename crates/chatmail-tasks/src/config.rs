@@ -29,6 +29,9 @@ pub const PERIODIC_INTERVAL: Duration = Duration::from_secs(3600);
 /// Auto-purge seen messages when `__AUTO_PURGE_SEEN__` is enabled (Madmail: 15 seconds).
 pub const AUTO_PURGE_SEEN_INTERVAL: Duration = Duration::from_secs(15);
 
+/// Let's Encrypt renewal check when `tls_mode = autocert` (daily; IP certs renew within 4d of expiry).
+pub const CERT_RENEWAL_INTERVAL: Duration = Duration::from_secs(24 * 3600);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaintenanceConfig {
     pub message_retention: Option<Duration>,

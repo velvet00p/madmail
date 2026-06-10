@@ -18,6 +18,7 @@
 pub mod autoconfig;
 pub mod cli;
 pub mod client_mail;
+pub mod config_autocert;
 pub mod config_www;
 pub mod credential_policy;
 pub mod data_size;
@@ -30,6 +31,7 @@ pub mod parse;
 pub mod paths;
 pub mod queue;
 
+pub use config_autocert::update_config_autocert;
 pub use config_www::update_config_www_dir;
 
 use std::path::PathBuf;
@@ -79,6 +81,8 @@ pub struct AppConfig {
     pub state_dir: Option<PathBuf>,
     pub runtime_dir: Option<PathBuf>,
     pub tls_mode: Option<String>,
+    /// ACME contact email (`acme_email` directive / `chatmail.toml`).
+    pub acme_email: Option<String>,
     /// `tls file <cert> <key>` from `maddy.conf`.
     pub tls_cert_path: Option<PathBuf>,
     pub tls_key_path: Option<PathBuf>,
@@ -265,6 +269,15 @@ impl AppConfig {
     /// Whether Iroh relay + IMAP discovery are configured in static config.
     pub fn iroh_configured(&self) -> bool {
         self.iroh_enable || self.iroh_relay_url.as_ref().is_some_and(|s| !s.is_empty())
+    }
+
+    /// ACME contact email: configured `acme_email`, else `admin@<domain>`.
+    pub fn effective_acme_email(&self, domain: &str) -> String {
+        if let Some(email) = self.acme_email.as_deref().filter(|s| !s.is_empty()) {
+            return email.to_string();
+        }
+        let bare = domain.trim_matches(|c| c == '[' || c == ']');
+        format!("admin@{bare}")
     }
 
     /// Default Iroh relay URL from `iroh_relay_url`, else `http://{host}:{port}`.

@@ -24,7 +24,7 @@ mod systemd;
 
 use chatmail_acme::{
     generate_self_signed, is_valid_dns_domain, is_valid_ip_for_acme, obtain_certificate,
-    ObtainOptions,
+    resolve_domain_to_public_ip, ObtainOptions,
 };
 use chatmail_config::install_cli::InstallArgs;
 use chatmail_config::{effective_database_config, is_local_dev_state_dir, AppConfig, Args};
@@ -169,7 +169,7 @@ async fn setup_certificates(cfg: &InstallConfig, args: &InstallArgs) -> Result<(
     }
 
     if cfg.tls_mode == "autocert" && args.obtain_certificate {
-        let label = if is_valid_ip_for_acme(&cfg.public_ip) {
+        let label = if is_valid_ip_for_acme(&cfg.primary_domain) {
             "short-lived IP"
         } else {
             "DNS"
@@ -264,11 +264,9 @@ fn ensure_secrets(cfg: &mut InstallConfig) -> Result<()> {
 fn print_next_steps(cfg: &InstallConfig) {
     println!("\nNext steps:");
     if cfg.tls_mode == "autocert" {
-        if is_valid_ip_for_acme(&cfg.public_ip) {
-            println!("  • Renew IP cert (daily): madmail certificate get");
-        } else {
-            println!("  • Renew: madmail certificate get");
-        }
+        println!(
+            "  • TLS renewal: in-process task renew-certificate (daily while server runs; IP <4d, DNS <30d)"
+        );
     }
     if !cfg.skip_systemd {
         println!(
@@ -319,53 +317,73 @@ impl InstallConfig {
             .unwrap_or_else(|| PathBuf::from(format!("/usr/local/bin/{binary_name}")));
 
         let (primary_domain, hostname, public_ip, local_domains, turn_off_tls) = if args.simple {
-            let ip = args
-                .ip
-                .clone()
-                .or_else(|| args.domain.clone())
-                .ok_or_else(|| ChatmailError::config("--ip is required for --simple install"))?;
-            let bare = ip.trim().trim_matches(|c| c == '[' || c == ']').to_string();
-            let is_ip = bare.parse::<std::net::IpAddr>().is_ok();
-            if !is_ip {
-                return Err(ChatmailError::config(format!(
-                    "--simple --ip requires an IPv4/IPv6 address, got {ip:?}"
-                )));
+            if let Some(domain) = args.domain.clone() {
+                let bare = domain
+                    .trim()
+                    .trim_matches(|c| c == '[' || c == ']')
+                    .to_string();
+                if bare.parse::<std::net::IpAddr>().is_ok() {
+                    return Err(ChatmailError::config(format!(
+                        "--simple --domain requires a DNS hostname, not an IP address; use --simple --ip for IP installs (got {domain:?})"
+                    )));
+                }
+                if !is_valid_dns_domain(&bare) {
+                    return Err(ChatmailError::config(format!(
+                        "invalid domain for --simple --domain: {bare:?}"
+                    )));
+                }
+                let hostname = args.hostname.clone().unwrap_or_else(|| bare.clone());
+                let public_ip = match args.ip.clone() {
+                    Some(ip) => ip,
+                    None => resolve_domain_to_public_ip(&bare)?,
+                };
+                (
+                    bare,
+                    hostname,
+                    public_ip,
+                    "$(primary_domain)".into(),
+                    args.turn_off_tls,
+                )
+            } else {
+                let ip = args.ip.clone().ok_or_else(|| {
+                    ChatmailError::config(
+                        "--ip or --domain is required for --simple install (see README: --simple --ip or --simple --domain)",
+                    )
+                })?;
+                let bare = ip.trim().trim_matches(|c| c == '[' || c == ']').to_string();
+                if bare.parse::<std::net::IpAddr>().is_err() {
+                    return Err(ChatmailError::config(format!(
+                        "--simple --ip requires an IPv4/IPv6 address, got {ip:?}"
+                    )));
+                }
+
+                let wrapped = wrap_ip_domain(&bare);
+                let hostname = bare.clone();
+                let local_domains = local_domains_for_ip(&bare);
+
+                (
+                    wrapped,
+                    hostname,
+                    bare,
+                    local_domains,
+                    args.turn_off_tls || !args.auto_ip_cert,
+                )
             }
-
-            let wrapped = wrap_ip_domain(&bare);
-            let hostname = if args.domain.is_some() {
-                wrap_ip_domain(args.hostname.as_deref().unwrap_or(&bare))
-            } else {
-                bare.clone()
-            };
-            let local_domains = if args.domain.is_some() {
-                format!("$(primary_domain) {} [{}]", bare, bare)
-            } else {
-                local_domains_for_ip(&bare)
-            };
-
-            (
-                wrapped,
-                hostname,
-                bare,
-                local_domains,
-                args.turn_off_tls || (is_ip && !args.auto_ip_cert),
-            )
         } else {
             let domain = args.domain.clone().ok_or_else(|| {
                 ChatmailError::config("--domain is required (or use --simple --ip)")
             })?;
-            let hostname = args
-                .hostname
-                .clone()
-                .map(|h| wrap_ip_domain(&h))
-                .unwrap_or_else(|| wrap_ip_domain(&domain));
-            let public_ip = args
-                .ip
-                .clone()
-                .unwrap_or_else(|| domain.trim_matches(|c| c == '[' || c == ']').to_string());
+            let bare = domain
+                .trim()
+                .trim_matches(|c| c == '[' || c == ']')
+                .to_string();
+            let hostname = args.hostname.clone().unwrap_or_else(|| bare.clone());
+            let public_ip = match args.ip.clone() {
+                Some(ip) => ip,
+                None => resolve_domain_to_public_ip(&bare)?,
+            };
             (
-                wrap_ip_domain(&domain),
+                bare,
                 hostname,
                 public_ip,
                 "$(primary_domain)".into(),
@@ -376,6 +394,7 @@ impl InstallConfig {
         let enable_ss = args.enable_ss || args.simple;
         let enable_turn = true;
         let language = validate_language_code(&args.lang)?;
+        let enable_chatmail = args.enable_chatmail || args.simple || args.domain.is_some();
 
         Ok(Self {
             binary_name: binary_name.clone(),
@@ -394,7 +413,7 @@ impl InstallConfig {
             acme_email: args.acme_email.clone().unwrap_or_default(),
             generate_certs: false,
             turn_off_tls,
-            enable_chatmail: args.enable_chatmail || args.simple,
+            enable_chatmail,
             enable_contact_sharing: true,
             enable_ss,
             enable_turn,
@@ -553,6 +572,85 @@ mod tests {
         assert_eq!(cfg.language, "fa");
         let conf = render_maddy_conf(&cfg);
         assert!(conf.contains("language fa"));
+    }
+
+    #[test]
+    fn simple_domain_install_config() {
+        let global = Args {
+            config: PathBuf::from("/etc/madmail/madmail.conf"),
+            state_dir: PathBuf::from("./data"),
+            boot_once: false,
+        };
+        let args = InstallArgs {
+            non_interactive: false,
+            simple: true,
+            domain: Some("mail.example.org".into()),
+            hostname: None,
+            ip: Some(EXAMPLE_PUBLIC_IP.into()),
+            config_dir: PathBuf::from("/etc/madmail"),
+            state_dir: None,
+            tls_mode: None,
+            cert_path: None,
+            key_path: None,
+            acme_email: Some("admin@example.com".into()),
+            enable_chatmail: false,
+            enable_ss: false,
+            turn_off_tls: false,
+            dry_run: false,
+            skip_systemd: false,
+            skip_user: false,
+            binary_path: None,
+            obtain_certificate: true,
+            auto_ip_cert: false,
+            lang: "en".into(),
+        };
+        let cfg = InstallConfig::from_args(&global, &args).unwrap();
+        assert_eq!(cfg.primary_domain, "mail.example.org");
+        assert_eq!(cfg.hostname, "mail.example.org");
+        assert_eq!(cfg.public_ip, EXAMPLE_PUBLIC_IP);
+        assert_eq!(cfg.local_domains, "$(primary_domain)");
+        assert!(!cfg.turn_off_tls);
+        assert!(cfg.enable_chatmail);
+        let mut cfg = cfg;
+        resolve_tls_mode(&mut cfg, &args).unwrap();
+        assert_eq!(cfg.tls_mode, "autocert");
+    }
+
+    #[test]
+    fn simple_domain_rejects_ip_literal() {
+        let global = Args {
+            config: PathBuf::from("/etc/madmail/madmail.conf"),
+            state_dir: PathBuf::from("./data"),
+            boot_once: false,
+        };
+        let args = InstallArgs {
+            simple: true,
+            domain: Some(EXAMPLE_PUBLIC_IP.into()),
+            ..InstallArgs {
+                non_interactive: false,
+                simple: false,
+                domain: None,
+                hostname: None,
+                ip: None,
+                config_dir: PathBuf::from("/etc/madmail"),
+                state_dir: None,
+                tls_mode: None,
+                cert_path: None,
+                key_path: None,
+                acme_email: None,
+                enable_chatmail: false,
+                enable_ss: false,
+                turn_off_tls: false,
+                dry_run: false,
+                skip_systemd: false,
+                skip_user: false,
+                binary_path: None,
+                obtain_certificate: true,
+                auto_ip_cert: false,
+                lang: "en".into(),
+            }
+        };
+        assert!(InstallConfig::from_args(&global, &args).is_err());
     }
 
     #[test]

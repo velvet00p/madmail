@@ -25,6 +25,7 @@ use chatmail_tasks::{
 use chatmail_types::{ChatmailError, Result};
 
 use super::context::CtlContext;
+use crate::supervisor::renew_autocert_from_cli;
 
 pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
@@ -54,11 +55,14 @@ pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
                         continue;
                     }
                     TaskId::PruneUnreadOlder => false,
+                    TaskId::RenewCertificate => ctx.config.tls_mode.as_deref() == Some("autocert"),
                 };
-                let cfg_note = if enabled {
-                    " [enabled — DB or maddy.conf]"
-                } else {
-                    ""
+                let cfg_note = match id {
+                    TaskId::RenewCertificate if enabled => {
+                        " [enabled — tls_mode autocert; every 24h]"
+                    }
+                    _ if enabled => " [enabled — DB or maddy.conf]",
+                    _ => "",
                 };
                 println!("  {} — {}{}", id.name(), id.description(), cfg_note);
             }
@@ -71,10 +75,10 @@ pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
             }
             if !maintenance.periodic_jobs_enabled() {
                 println!(
-                    "No periodic jobs — enable message retention in admin UI or set retention / unused_account_retention in maddy.conf"
+                    "No periodic retention jobs — enable message retention in admin UI or set retention / unused_account_retention in maddy.conf"
                 );
             } else {
-                println!("Periodic interval when server is running: 1h (Madmail parity)");
+                println!("Periodic retention interval when server is running: 1h (Madmail parity)");
             }
         }
         TasksCommand::Run { task, retention } => {
@@ -85,6 +89,18 @@ pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
                 Some(s) => Some(parse_retention_arg(s)?),
                 None => None,
             };
+            if id == TaskId::RenewCertificate {
+                let outcome = renew_autocert_from_cli(&ctx.config, &ctx.state_dir).await?;
+                if outcome.skipped {
+                    println!(
+                        "renew-certificate: skipped ({})",
+                        outcome.detail.unwrap_or_default()
+                    );
+                } else if outcome.renewed {
+                    println!("renew-certificate: {}", outcome.detail.unwrap_or_default());
+                }
+                return Ok(());
+            }
             let outcome = run_task(&task_ctx, id, retention_override).await?;
             if outcome.skipped {
                 println!(

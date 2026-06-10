@@ -18,15 +18,17 @@
 //! Let's Encrypt short-lived certificates for public IP addresses (HTTP-01).
 
 use std::net::IpAddr;
-use std::path::Path;
 
 use chatmail_types::{ChatmailError, Result};
 use instant_acme::{
-    Account, AccountCredentials, AuthorizationStatus, ChallengeType, Identifier, LetsEncrypt,
-    NewAccount, NewOrder, OrderStatus, RetryPolicy,
+    AuthorizationStatus, ChallengeType, Identifier, LetsEncrypt, NewOrder, OrderStatus, RetryPolicy,
 };
 use tracing::info;
 
+use crate::acme_common::{
+    ensure_http01_listen_available, ip_order_not_ready_error, load_or_create_le_account,
+    map_instant_acme,
+};
 use crate::http01::Http01Solver;
 use crate::obtain::{cert_needs_renewal, write_pem_pair, ObtainOptions};
 
@@ -143,7 +145,7 @@ pub async fn obtain_ip_certificate(opts: &ObtainOptions) -> Result<()> {
     let retry = RetryPolicy::new().timeout(std::time::Duration::from_secs(60));
     let status = order.poll_ready(&retry).await.map_err(map_instant_acme)?;
     if status != OrderStatus::Ready {
-        return Err(order_not_ready_error(status, ip));
+        return Err(ip_order_not_ready_error(status, ip));
     }
 
     let key_pem = order.finalize().await.map_err(map_instant_acme)?;
@@ -169,118 +171,10 @@ pub async fn obtain_ip_certificate(opts: &ObtainOptions) -> Result<()> {
     Ok(())
 }
 
-async fn load_or_create_le_account(opts: &ObtainOptions, directory_url: &str) -> Result<Account> {
-    let cred_path = opts.le_account_path();
-    if cred_path.is_file() {
-        let text = std::fs::read_to_string(&cred_path)
-            .map_err(|e| ChatmailError::config(format!("read {}: {e}", cred_path.display())))?;
-        let credentials: AccountCredentials = serde_json::from_str(&text)
-            .map_err(|e| ChatmailError::config(format!("parse {}: {e}", cred_path.display())))?;
-        return Account::builder()
-            .map_err(map_instant_acme)?
-            .from_credentials(credentials)
-            .await
-            .map_err(map_instant_acme);
-    }
-
-    let contact = acme_mailto_contact(&opts.email)?;
-    let contacts = [contact.as_str()];
-    let new_account = NewAccount {
-        contact: &contacts,
-        terms_of_service_agreed: true,
-        only_return_existing: false,
-    };
-
-    let (account, credentials) = Account::builder()
-        .map_err(map_instant_acme)?
-        .create(&new_account, directory_url.to_owned(), None)
-        .await
-        .map_err(map_instant_acme)?;
-
-    save_le_account(&cred_path, &credentials)?;
-    Ok(account)
-}
-
-fn save_le_account(path: &Path, credentials: &AccountCredentials) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| ChatmailError::config(format!("create {}: {e}", parent.display())))?;
-    }
-    let json = serde_json::to_string_pretty(credentials)
-        .map_err(|e| ChatmailError::config(e.to_string()))?;
-    std::fs::write(path, json)
-        .map_err(|e| ChatmailError::config(format!("write {}: {e}", path.display())))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).ok();
-    }
-    Ok(())
-}
-
-fn map_instant_acme(e: instant_acme::Error) -> ChatmailError {
-    ChatmailError::config(e.to_string())
-}
-
-/// Port 80 must be free for our temporary HTTP-01 responder (not an already-running madmail/nginx).
-fn ensure_http01_listen_available(addr: &std::net::SocketAddr) -> Result<()> {
-    std::net::TcpListener::bind(addr).map_err(|e| {
-        ChatmailError::config(format!(
-            "cannot bind {addr} for HTTP-01 ({e}). Stop any service using port {} first \
-             (e.g. systemctl stop madmail, or another web server), then retry.",
-            addr.port()
-        ))
-    })?;
-    Ok(())
-}
-
-fn order_not_ready_error(status: OrderStatus, ip: IpAddr) -> ChatmailError {
-    ChatmailError::config(format!(
-        "Let's Encrypt rejected the HTTP-01 challenge for {ip} (order status: {status:?}).\n\
-         Common causes:\n\
-         • Port 80 is already in use — validators reach another process, not this installer. \
-           Run `systemctl stop madmail` (and nginx/apache if any) before `install --auto-ip-cert`.\n\
-         • Inbound TCP 80 is blocked by a firewall or cloud security group.\n\
-         • This machine is not reachable on the public IP {ip} (install must run on the host that owns the IP).\n\
-         • Rate limits — wait an hour or use `madmail certificate get --staging` for testing."
-    ))
-}
-
-/// Let's Encrypt requires `mailto:` contacts with a DNS domain, not an IP literal.
-fn acme_mailto_contact(email: &str) -> Result<String> {
-    let bare = email.trim().trim_start_matches("mailto:");
-    let Some((local, domain)) = bare.split_once('@') else {
-        return Err(ChatmailError::config(format!(
-            "invalid ACME contact email {email:?} (expected user@domain)"
-        )));
-    };
-    if local.is_empty() || domain.is_empty() {
-        return Err(ChatmailError::config(format!(
-            "invalid ACME contact email {email:?}"
-        )));
-    }
-    if domain.parse::<std::net::IpAddr>().is_ok() {
-        return Err(ChatmailError::config(format!(
-            "Let's Encrypt requires --acme-email with a DNS domain (got {email:?}); \
-             addresses like admin@{domain} are not accepted"
-        )));
-    }
-    Ok(format!("mailto:{local}@{domain}"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::net::Ipv4Addr;
-
-    #[test]
-    fn acme_contact_rejects_ip_domain() {
-        assert!(acme_mailto_contact("admin@1.2.3.4").is_err());
-        assert_eq!(
-            acme_mailto_contact("admin@example.com").unwrap(),
-            "mailto:admin@example.com"
-        );
-    }
 
     #[test]
     fn public_ip_validation() {

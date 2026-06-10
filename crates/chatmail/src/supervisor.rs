@@ -51,6 +51,10 @@ use chatmail_shadowsocks::ShadowsocksHandle;
 use chatmail_smtp::SmtpSessionConfig;
 use chatmail_turn::TurnServerHandle;
 
+mod cert_renew;
+pub use cert_renew::renew_autocert_from_cli;
+use cert_renew::supervisor_cert_renewer;
+
 struct ListenerSlot {
     cancel: CancellationToken,
     join: JoinHandle<()>,
@@ -197,11 +201,8 @@ impl ServerSupervisor {
             starttls_config: None,
         };
 
-        let maintenance =
-            chatmail_tasks::spawn_maintenance_scheduler(pool.clone(), state_dir, file_config);
-
         let inner = Arc::new(SupervisorInner {
-            pool,
+            pool: pool.clone(),
             app,
             file_config: file_config.clone(),
             state_dir: state_dir.to_path_buf(),
@@ -217,8 +218,17 @@ impl ServerSupervisor {
             turn_server: Mutex::new(turn_server),
             iroh_relay: Mutex::new(iroh_relay),
             ss_server: Mutex::new(ss_server),
-            maintenance: Mutex::new(Some(maintenance)),
+            maintenance: Mutex::new(None),
         });
+
+        let cert_renewer = if file_config.tls_mode.as_deref() == Some("autocert") {
+            Some(supervisor_cert_renewer(Arc::clone(&inner)))
+        } else {
+            None
+        };
+        let maintenance =
+            chatmail_tasks::spawn_maintenance_scheduler(pool, state_dir, file_config, cert_renewer);
+        *inner.maintenance.lock().await = Some(maintenance);
 
         inner.rebuild_http_routers().await?;
         inner.start_listeners().await?;

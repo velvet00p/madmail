@@ -15,21 +15,24 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! Obtain / renew Let's Encrypt certificates via [lers](https://github.com/akrantz01/lers) (DNS)
-//! or [instant-acme](https://github.com/djc/instant-acme) (public IP, short-lived profile).
+//! Obtain / renew Let's Encrypt certificates via [instant-acme](https://github.com/djc/instant-acme)
+//! (DNS hostnames and public IP short-lived profile).
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use chatmail_types::{ChatmailError, Result};
-use lers::solver::Http01Solver;
-use lers::{Directory, LETS_ENCRYPT_PRODUCTION_URL, LETS_ENCRYPT_STAGING_URL};
-use openssl::ec::{EcGroup, EcKey};
-use openssl::nid::Nid;
-use openssl::pkey::{PKey, Private};
+use instant_acme::{
+    AuthorizationStatus, ChallengeType, Identifier, LetsEncrypt, NewOrder, OrderStatus, RetryPolicy,
+};
 use openssl::x509::X509;
 use tracing::info;
 
+use crate::acme_common::{
+    dns_order_not_ready_error, ensure_http01_listen_available, load_or_create_le_account,
+    map_instant_acme,
+};
+use crate::http01::Http01Solver;
 use crate::obtain_ip::{obtain_ip_certificate, parse_public_ip};
 
 /// Options for `certificate get` / `regenerate` and install-time issuance.
@@ -95,55 +98,80 @@ async fn obtain_dns_certificate(opts: &ObtainOptions) -> Result<()> {
         return Ok(());
     }
 
+    ensure_http01_listen_available(&opts.http_listen)?;
+
     println!(
         "Starting HTTP-01 challenge listener on {}…",
         opts.http_listen
     );
     let solver = Http01Solver::new();
-    let handle = solver
+    let http_handle = solver
         .start(&opts.http_listen)
         .map_err(|e| ChatmailError::config(format!("bind HTTP-01 on {}: {e}", opts.http_listen)))?;
 
     let directory_url = if opts.staging {
-        LETS_ENCRYPT_STAGING_URL
+        LetsEncrypt::Staging.url().to_owned()
     } else {
-        LETS_ENCRYPT_PRODUCTION_URL
+        LetsEncrypt::Production.url().to_owned()
     };
 
-    let directory = Directory::builder(directory_url.to_string())
-        .http01_solver(Box::new(solver))
-        .build()
-        .await
-        .map_err(map_lers)?;
+    let account = load_or_create_le_account(opts, &directory_url).await?;
 
-    let account_key = load_or_generate_account_key(&opts.account_key_path())?;
-    let contact = format!("mailto:{}", opts.email);
-
-    let account = directory
-        .account()
-        .private_key(account_key.clone())
-        .terms_of_service_agreed(true)
-        .contacts(vec![contact])
-        .create_if_not_exists()
-        .await
-        .map_err(map_lers)?;
-
-    save_account_key(&opts.account_key_path(), account.private_key())?;
+    let identifiers = [Identifier::Dns(domain.clone())];
+    let new_order = NewOrder::new(&identifiers);
 
     println!("Requesting certificate for {domain} from Let's Encrypt…");
-    let certificate = account
-        .certificate()
-        .add_domain(&domain)
-        .obtain()
+    let mut order = account
+        .new_order(&new_order)
         .await
-        .map_err(map_lers)?;
+        .map_err(map_instant_acme)?;
 
-    write_lers_certificate(&opts.cert_path(), &opts.key_path(), &certificate)?;
+    let mut authorizations = order.authorizations();
+    while let Some(result) = authorizations.next().await {
+        let mut authz = result.map_err(map_instant_acme)?;
+        match authz.status {
+            AuthorizationStatus::Valid => continue,
+            AuthorizationStatus::Pending => {}
+            other => {
+                return Err(ChatmailError::config(format!(
+                    "unexpected authorization status for {domain}: {other:?}"
+                )));
+            }
+        }
 
-    handle
-        .stop()
+        let mut challenge = authz
+            .challenge(ChallengeType::Http01)
+            .ok_or_else(|| ChatmailError::config(format!("no http-01 challenge for {domain}")))?;
+
+        let host = challenge.identifier().to_string();
+        let token = challenge.token.clone();
+        let key_auth = challenge.key_authorization().as_str().to_string();
+
+        solver.present(host.clone(), token.clone(), key_auth);
+        challenge.set_ready().await.map_err(map_instant_acme)?;
+        info!(%host, %token, "http-01 challenge marked ready (waiting for Let's Encrypt validation)");
+    }
+
+    let retry = RetryPolicy::new().timeout(std::time::Duration::from_secs(60));
+    let status = order.poll_ready(&retry).await.map_err(map_instant_acme)?;
+    if status != OrderStatus::Ready {
+        return Err(dns_order_not_ready_error(status, &domain));
+    }
+
+    let key_pem = order.finalize().await.map_err(map_instant_acme)?;
+    let chain_pem = order
+        .poll_certificate(&RetryPolicy::default())
         .await
-        .map_err(|e| ChatmailError::config(format!("stop HTTP-01 listener: {e}")))?;
+        .map_err(map_instant_acme)?;
+
+    write_pem_pair(
+        &opts.cert_path(),
+        &opts.key_path(),
+        chain_pem.as_bytes(),
+        key_pem.as_bytes(),
+    )?;
+
+    http_handle.stop().await.map_err(ChatmailError::config)?;
 
     println!(
         "✓ Certificate written:\n  {}\n  {}",
@@ -179,12 +207,9 @@ pub fn cert_needs_renewal(cert_path: &Path, renew_within_days: u32) -> Result<bo
     let cert =
         X509::from_pem(&pem).map_err(|e| ChatmailError::config(format!("parse cert: {e}")))?;
     let not_after = cert.not_after();
-    let not_after_str = not_after.to_string();
-    let not_after = openssl::asn1::Asn1Time::from_str(&not_after_str)
-        .map_err(|e| ChatmailError::config(format!("parse notAfter: {e}")))?;
     let renew_at = openssl::asn1::Asn1Time::days_from_now(renew_within_days)
         .map_err(|e| ChatmailError::config(format!("renew threshold: {e}")))?;
-    Ok(not_after < renew_at)
+    Ok(not_after < renew_at.as_ref())
 }
 
 pub(crate) fn write_pem_pair(
@@ -208,55 +233,6 @@ pub(crate) fn write_pem_pair(
         std::fs::set_permissions(key_path, std::fs::Permissions::from_mode(0o600)).ok();
     }
     Ok(())
-}
-
-fn write_lers_certificate(
-    cert_path: &Path,
-    key_path: &Path,
-    certificate: &lers::Certificate,
-) -> Result<()> {
-    let chain_pem = certificate
-        .fullchain_to_pem()
-        .map_err(|e| ChatmailError::config(e.to_string()))?;
-    let key_pem = certificate
-        .private_key_to_pem()
-        .map_err(|e| ChatmailError::config(e.to_string()))?;
-    write_pem_pair(cert_path, key_path, &chain_pem, &key_pem)
-}
-
-fn load_or_generate_account_key(path: &Path) -> Result<PKey<Private>> {
-    if path.is_file() {
-        let pem = std::fs::read(path)
-            .map_err(|e| ChatmailError::config(format!("read {}: {e}", path.display())))?;
-        return PKey::private_key_from_pem(&pem)
-            .map_err(|e| ChatmailError::config(format!("parse account key: {e}")));
-    }
-    let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)
-        .map_err(|e| ChatmailError::config(e.to_string()))?;
-    let ec = EcKey::generate(&group).map_err(|e| ChatmailError::config(e.to_string()))?;
-    PKey::from_ec_key(ec).map_err(|e| ChatmailError::config(e.to_string()))
-}
-
-fn save_account_key(path: &Path, key: &PKey<Private>) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| ChatmailError::config(format!("create {}: {e}", parent.display())))?;
-    }
-    let pem = key
-        .private_key_to_pem_pkcs8()
-        .map_err(|e| ChatmailError::config(e.to_string()))?;
-    std::fs::write(path, pem)
-        .map_err(|e| ChatmailError::config(format!("write {}: {e}", path.display())))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).ok();
-    }
-    Ok(())
-}
-
-fn map_lers(e: lers::Error) -> ChatmailError {
-    ChatmailError::config(e.to_string())
 }
 
 pub fn parse_http_listen(addr: &str) -> Result<SocketAddr> {

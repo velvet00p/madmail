@@ -17,13 +17,15 @@
 
 //! Scheduled maintenance jobs (Madmail `imapsql` cleanup loops + auto-purge seen).
 
+mod cert_renew;
 mod config;
 mod jobs;
 mod scheduler;
 
+pub use cert_renew::{CertRenewOutcome, CertificateRenewer};
 pub use config::MaintenanceConfig;
 pub use jobs::{
-    parse_retention_arg, run_all_configured, run_task, TaskContext, TaskId, TaskOutcome,
-    TaskRunReport,
+    parse_retention_arg, run_all_configured, run_certificate_renewal, run_task, TaskContext,
+    TaskId, TaskOutcome, TaskRunReport,
 };
 pub use scheduler::{spawn_maintenance_scheduler, MaintenanceHandle};

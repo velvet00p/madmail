@@ -198,8 +198,12 @@ fn apply_directive(name: &str, args: &[String], block_path: &[&str], cfg: &mut A
             "hostname" if has_value && cfg.hostname.is_none() => {
                 cfg.hostname = Some(value.clone());
             }
+            "tls_mode" if has_value => cfg.tls_mode = Some(arg0.to_string()),
+            "acme_email" if has_value => cfg.acme_email = Some(value.clone()),
             "tls" if arg0 == "file" => {
-                cfg.tls_mode = Some("file".into());
+                if cfg.tls_mode.is_none() {
+                    cfg.tls_mode = Some("file".into());
+                }
                 if args.len() >= 3 {
                     cfg.tls_cert_path = Some(args[1].clone().into());
                     cfg.tls_key_path = Some(args[2].clone().into());
@@ -671,6 +675,18 @@ auth.pass_table local_authdb {
         let content = "tls {\n    loader autocert {\n        hostname mail.example.org\n    }\n}\n";
         let cfg = parse_maddy_config(content).unwrap();
         assert_eq!(cfg.tls_mode.as_deref(), Some("autocert"));
+    }
+
+    #[test]
+    fn tls_mode_autocert_wins_over_tls_file() {
+        let content = r#"
+tls_mode autocert
+acme_email admin@example.org
+tls file /var/lib/madmail/certs/fullchain.pem /var/lib/madmail/certs/privkey.pem
+"#;
+        let cfg = parse_maddy_config(content).unwrap();
+        assert_eq!(cfg.tls_mode.as_deref(), Some("autocert"));
+        assert_eq!(cfg.acme_email.as_deref(), Some("admin@example.org"));
     }
 
     #[test]

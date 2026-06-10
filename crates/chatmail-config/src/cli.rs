@@ -133,7 +133,7 @@ pub enum Command {
     ImapAcct,
     /// Install and configure the mail server.
     Install(InstallArgs),
-    /// TLS certificates (Let's Encrypt via lers).
+    /// TLS certificates (Let's Encrypt / file / self-signed).
     Certificate {
         #[command(subcommand)]
         cmd: CertificateCommand,

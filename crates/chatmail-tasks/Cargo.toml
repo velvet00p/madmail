@@ -9,6 +9,7 @@ chatmail-config = { workspace = true }
 chatmail-db = { workspace = true }
 chatmail-storage = { workspace = true }
 chatmail-types = { workspace = true }
+async-trait = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

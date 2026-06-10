@@ -21,11 +21,14 @@
 //! - **autocert** — Let's Encrypt via HTTP-01 (`madmail certificate get|regenerate`)
 //! - **IP autocert** — Let's Encrypt short-lived profile (~6 days) for public IPs
 
+mod acme_common;
 mod http01;
 mod obtain;
 mod obtain_ip;
 mod self_signed;
+mod status;
 
+pub use acme_common::resolve_domain_to_public_ip;
 pub use obtain::{
     cert_needs_renewal, obtain_certificate, parse_http_listen, ObtainOptions,
     DNS_CERT_RENEW_WITHIN_DAYS,
@@ -35,6 +38,7 @@ pub use obtain_ip::{
     LETS_ENCRYPT_SHORTLIVED_PROFILE,
 };
 pub use self_signed::generate_self_signed;
+pub use status::{read_certificate_info, CertIssuerKind, CertificateInfo};
 
 /// Whether `domain` is suitable for Let's Encrypt DNS identifiers.
 pub fn is_valid_dns_domain(domain: &str) -> bool {

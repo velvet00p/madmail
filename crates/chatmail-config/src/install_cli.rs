@@ -15,7 +15,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! Flags for `madmail install` and `madmail certificate` (Madmail-compatible).
+//! Flags for `madmail install` and `madmail certificate` / `certificate autocert` (Madmail-compatible).
 
 use std::path::PathBuf;
 
@@ -100,13 +100,46 @@ pub struct InstallArgs {
     pub lang: String,
 }
 
-/// `madmail certificate` — Let's Encrypt via lers HTTP-01.
+/// `madmail certificate` — Let's Encrypt via instant-acme HTTP-01.
 #[derive(Debug, Subcommand, Clone)]
 pub enum CertificateCommand {
     /// Obtain certificate if missing or expiring within 30 days.
     Get(CertificateArgs),
     /// Force new certificate issuance.
     Regenerate(CertificateArgs),
+    /// Show certificate management mode and validity.
+    Status,
+    /// Enable or inspect in-process Let's Encrypt auto-renewal.
+    #[command(subcommand)]
+    Autocert(CertificateAutocertCommand),
+}
+
+/// `madmail certificate autocert` — persist `tls_mode = autocert` and renewal email.
+#[derive(Debug, Subcommand, Clone)]
+pub enum CertificateAutocertCommand {
+    /// Turn on autocert mode and store ACME contact email (optional immediate issuance).
+    Enable(CertificateAutocertEnableArgs),
+    /// Show autocert mode, contact email, and renewal eligibility.
+    Status,
+}
+
+#[derive(Debug, Parser, Clone)]
+pub struct CertificateAutocertEnableArgs {
+    /// ACME contact email (Let's Encrypt account).
+    #[arg(long)]
+    pub email: String,
+
+    /// HTTP-01 listener (port 80 must be free when `--obtain` is used).
+    #[arg(long, default_value = "0.0.0.0:80")]
+    pub http_listen: String,
+
+    /// Use Let's Encrypt staging (for tests).
+    #[arg(long)]
+    pub staging: bool,
+
+    /// Obtain certificate immediately after enabling (needs port 80 free).
+    #[arg(long, default_value_t = true)]
+    pub obtain: bool,
 }
 
 #[derive(Debug, Parser, Clone)]
