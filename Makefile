@@ -6,7 +6,8 @@
 .PHONY: all init build build-admin-web build-chatmail-embed build-chatmail-embed-release build-with-admin-web build-release build-profiling build-release-static build-workspace build-all \
 	test test-unit test-integration test-e2e test-maintenance test-imap test-turn test-core-turn test-deltachat test-dclogin relay-ping-build relay-ping-clean t1-bench t1-report-demo \
 	check vet lint fmt fmt-check run run-bg run-debug restart stop logs reset-db dev-certs clean help \
-	sign push push1 push2 log1 log2 push-signed publish init-publish build-publish
+	sign push push1 push2 log1 log2 push-signed publish init-publish build-publish \
+	man man-lint man-check
 
 # Optional overrides (copy .env.example → .env; publish merges context/madmail/.env into .env)
 -include .env
@@ -383,6 +384,24 @@ clean: relay-ping-clean
 	rm -f $(PID_FILE)
 	@echo "Removed Cargo artifacts, admin-web embed staging, and relay-ping bin/"
 
+# ── Manual page (docs/man/madmail.1.scd → docs/man/madmail.1, embedded) ───
+MAN_SCD     := docs/man/madmail.1.scd
+MAN_ROFF    := docs/man/madmail.1
+MAN_VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+
+man:
+	@command -v scdoc >/dev/null || { echo "scdoc required (see docs/man/README.md)" >&2; exit 1; }
+	sed 's/@VERSION@/$(MAN_VERSION)/' $(MAN_SCD) | scdoc > $(MAN_ROFF)
+	@echo "Wrote $(MAN_ROFF) (version $(MAN_VERSION))"
+
+man-lint: man
+	@groff -man -Tutf8 $(MAN_ROFF) >/dev/null
+	@echo "groff -man OK: $(MAN_ROFF)"
+	@if command -v mandoc >/dev/null 2>&1; then mandoc -T lint $(MAN_ROFF); echo "mandoc -T lint OK"; fi
+
+man-check: man-lint
+	@cargo test -p chatmail ctl::docs -- --nocapture
+
 # ── Help ─────────────────────────────────────────────────────────────────────
 help:
 	@echo "chatmail-rs Makefile (from context/madmail/Makefile)"
@@ -392,7 +411,7 @@ help:
 	@echo "Admin UI:  edit $(ADMIN_WEB_DIR) → make build-with-admin-web → make restart"
 	@echo "Deploy:    push, push1 (unsigned), push2 (static+sign+upgrade), push-signed, sign (scripts/sign.sh), log1, log2 (scripts/deploy.sh)"
 	@echo "Test:      test, test-unit, test-e2e, test-maintenance, test-integration, test-imap, test-turn, test-deltachat, test-dclogin"
-	@echo "Quality:   check, lint, fmt, fmt-check"
+	@echo "Quality:   check, lint, fmt, fmt-check, man, man-lint, man-check"
 	@echo "relay-ping: relay-ping-build (in $(RELAY_PING_DIR))"
 	@echo "Init:      init (download iroh-relay $(IROH_RELAY_VERSION) into $(IROH_ASSETS)/)"
 	@echo "Release:   build-publish, publish (PUBLISH_ARGS=…), init-publish (init + publish)"

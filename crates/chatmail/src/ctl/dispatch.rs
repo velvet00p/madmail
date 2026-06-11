@@ -21,7 +21,7 @@ use chatmail_types::{ChatmailError, Result};
 use chatmail_db::settings_keys;
 
 use super::{
-    accounts, admin_token, admin_web, blocklist_cmd, certificate, delete_cmd, endpoint_cache,
+    accounts, admin_token, admin_web, blocklist_cmd, certificate, delete_cmd, docs, endpoint_cache,
     federation, html, install, language, message_size, port, push, registration,
     registration_tokens, reload, service_toggle, sharing, status_cmd, tasks, uninstall, version,
 };
@@ -32,16 +32,13 @@ pub async fn dispatch(cli: &Cli) -> Result<()> {
             "internal error: dispatch called for server run",
         )),
         Some(Command::Upgrade { path_or_url }) | Some(Command::Update { path_or_url }) => {
-            crate::upgrade::upgrade_command(path_or_url)
+            crate::upgrade::upgrade_command(path_or_url, cli.args.json)
         }
         Some(Command::AdminToken { raw, no_qr }) => {
             admin_token::admin_token(&cli.args, *raw, *no_qr).await
         }
         Some(Command::AdminWeb { cmd }) => admin_web::admin_web(&cli.args, cmd).await,
-        Some(Command::Version) => {
-            version::print_version();
-            Ok(())
-        }
+        Some(Command::Version) => version::print_version(&cli.args),
         Some(Command::Install(args)) => install::install(&cli.args, args).await,
         Some(Command::Certificate { cmd }) => certificate::certificate(&cli.args, cmd).await,
         Some(Command::Accounts(cmd)) => accounts::accounts(&cli.args, cmd).await,
@@ -96,6 +93,9 @@ pub async fn dispatch(cli: &Cli) -> Result<()> {
             reload::reload(&cli.args, url.as_deref(), *insecure).await
         }
         Some(Command::Tasks(cmd)) => tasks::tasks(&cli.args, cmd).await,
+        Some(Command::Completion(shell)) => docs::print_completion(shell),
+        Some(Command::GenerateMan) => docs::print_generate_man(&cli.args),
+        Some(Command::GenerateFishCompletion) => docs::print_generate_fish_completion(&cli.args),
         Some(cmd) => not_implemented(cmd),
     }
 }
@@ -108,7 +108,7 @@ fn not_implemented(cmd: &Command) -> Result<()> {
          Implemented: run, upgrade, update, version, admin-token, admin-web, install, certificate, \
          accounts, ban-list, blocklist, create-user, delete, registration, language, \
          html-export, html-serve, webimap, websmtp, push, federation, registration-tokens, sharing, \
-         status, uninstall, endpoint-cache, port, reload, message-size, tasks"
+         status, uninstall, endpoint-cache, port, reload, message-size, tasks, completion"
     )))
 }
 
@@ -153,5 +153,8 @@ fn command_name(cmd: &Command) -> &'static str {
         Command::Push { .. } => "push",
         Command::MessageSize { .. } => "message-size",
         Command::Tasks { .. } => "tasks",
+        Command::Completion { .. } => "completion",
+        Command::GenerateMan => "generate-man",
+        Command::GenerateFishCompletion => "generate-fish-completion",
     }
 }

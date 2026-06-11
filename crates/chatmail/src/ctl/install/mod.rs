@@ -32,7 +32,9 @@ use chatmail_db::{init_db_from_config, set_setting, settings_keys};
 use chatmail_types::{wrap_ip_domain, ChatmailError, Result};
 
 use self::config::{local_domains_for_ip, render_maddy_conf, InstallConfig};
+use super::docs;
 use super::language::validate_language_code;
+use super::output::CtlOut;
 
 pub async fn install(global: &Args, args: &InstallArgs) -> Result<()> {
     if !args.non_interactive && !args.simple {
@@ -65,7 +67,15 @@ pub async fn install(global: &Args, args: &InstallArgs) -> Result<()> {
     }
 
     if args.dry_run {
-        println!("[dry-run] would run full install steps");
+        #[cfg(unix)]
+        if cfg.system_install {
+            docs::install_cli_docs(&cfg.binary_name, true)?;
+        }
+        if global.json {
+            CtlOut::from_args(global, "install").emit(serde_json::json!({ "dry_run": true }))?;
+        } else {
+            println!("[dry-run] would run full install steps");
+        }
         return Ok(());
     }
 
@@ -83,14 +93,39 @@ pub async fn install(global: &Args, args: &InstallArgs) -> Result<()> {
         system::setup_config_permissions(&cfg, false)?;
         system::setup_permissions(&cfg, false)?;
         system::install_binary(&cfg, false)?;
+        docs::install_cli_docs(&cfg.binary_name, false)?;
     }
     if cfg.system_install && !args.skip_systemd {
         systemd::install_unit(&cfg)?;
         systemd::daemon_reload()?;
     }
 
-    print_next_steps(&cfg);
-    println!("\nInstallation completed successfully.");
+    if global.json {
+        let doc_paths = docs::CliDocPaths::for_binary(&cfg.binary_name);
+        CtlOut::from_args(global, "install").emit(serde_json::json!({
+            "installed": true,
+            "primary_domain": cfg.primary_domain,
+            "paths_explicit": cfg.paths_explicit,
+            "config": cfg.config_path.display().to_string(),
+            "state_dir": cfg.state_dir.display().to_string(),
+            "man_page": if cfg.system_install { Some(doc_paths.man_page.display().to_string()) } else { None },
+            "completions": if cfg.system_install {
+                Some({
+                    let p = &doc_paths;
+                    serde_json::json!({
+                        "bash": p.bash_completion.display().to_string(),
+                        "zsh": p.zsh_completion.display().to_string(),
+                        "fish": p.fish_completion.display().to_string(),
+                    })
+                })
+            } else {
+                None
+            },
+        }))?;
+    } else {
+        print_next_steps(&cfg);
+        println!("\nInstallation completed successfully.");
+    }
     Ok(())
 }
 
@@ -286,6 +321,12 @@ fn print_next_steps(cfg: &InstallConfig) {
         );
     }
     println!("  • Admin:  madmail admin-token");
+    if cfg.system_install {
+        println!(
+            "  • Docs:   man {0}  (tab completion: bash/zsh/fish)",
+            cfg.binary_name
+        );
+    }
     if cfg.tls_mode == "self_signed" || cfg.turn_off_tls {
         println!("  • Delta Chat: use turn_off_tls / accept self-signed certs for IP relays");
     }
@@ -526,6 +567,7 @@ mod tests {
             config: PathBuf::from("/etc/madmail/madmail.conf"),
             state_dir: PathBuf::from("./data"),
             boot_once: false,
+            json: false,
         };
         let args = InstallArgs {
             non_interactive: false,
@@ -585,6 +627,7 @@ mod tests {
             config: PathBuf::from("/etc/madmail/madmail.conf"),
             state_dir: PathBuf::from("./data"),
             boot_once: false,
+            json: false,
         };
         let args = InstallArgs {
             non_interactive: false,
@@ -612,7 +655,10 @@ mod tests {
         let cfg = InstallConfig::from_args(&global, &args).unwrap();
         assert_eq!(cfg.state_dir, PathBuf::from("/tmp/sd"));
         assert_eq!(cfg.config_dir, PathBuf::from("/tmp/mm"));
-        assert_eq!(cfg.config_path.parent().unwrap(), PathBuf::from("/tmp/mm").as_path());
+        assert_eq!(
+            cfg.config_path.parent().unwrap(),
+            PathBuf::from("/tmp/mm").as_path()
+        );
         assert!(cfg.cert_path.starts_with("/tmp/mm/certs"));
         assert!(cfg.paths_explicit);
         assert!(!cfg.use_default_systemd_paths);
@@ -625,6 +671,7 @@ mod tests {
             config: PathBuf::from("/etc/madmail/madmail.conf"),
             state_dir: PathBuf::from("./data"),
             boot_once: false,
+            json: false,
         };
         let args = InstallArgs {
             non_interactive: false,
@@ -669,6 +716,7 @@ mod tests {
             config: PathBuf::from("/etc/madmail/madmail.conf"),
             state_dir: PathBuf::from("/var/lib/madmail"),
             boot_once: false,
+            json: false,
         };
         let args = InstallArgs {
             non_interactive: false,
@@ -706,6 +754,7 @@ mod tests {
             config: PathBuf::from("/etc/madmail/madmail.conf"),
             state_dir: PathBuf::from("./data"),
             boot_once: false,
+            json: false,
         };
         let args = InstallArgs {
             lang: "fa".into(),
@@ -745,6 +794,7 @@ mod tests {
             config: PathBuf::from("/etc/madmail/madmail.conf"),
             state_dir: PathBuf::from("./data"),
             boot_once: false,
+            json: false,
         };
         let args = InstallArgs {
             non_interactive: false,
@@ -787,6 +837,7 @@ mod tests {
             config: PathBuf::from("/etc/madmail/madmail.conf"),
             state_dir: PathBuf::from("./data"),
             boot_once: false,
+            json: false,
         };
         let args = InstallArgs {
             simple: true,
@@ -824,6 +875,7 @@ mod tests {
             config: PathBuf::from("/etc/madmail/madmail.conf"),
             state_dir: PathBuf::from("./data"),
             boot_once: false,
+            json: false,
         };
         let args = InstallArgs {
             lang: "de".into(),

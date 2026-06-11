@@ -116,8 +116,9 @@ Status legend: **done** · **planned** (TDD scope) · **defer** (post-MVP) · **
 
 | Command | Madmail source | chatmail-rs |
 |---------|----------------|-------------|
-| `generate-man` | `app.go` | **n/a** |
-| `generate-fish-completion` | `app.go` | **n/a** |
+| `generate-man` | `app.go` | `ctl/docs.rs` (embedded `docs/man/madmail.1.scd`) |
+| `generate-fish-completion` | `app.go` | `ctl/docs.rs` + `completion fish` |
+| `completion` | urfave bash completion | `completion {bash,zsh,fish}` |
 | `debug.pprof` flags | `maddy.go` (build tag) | **defer** |
 
 ---

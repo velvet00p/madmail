@@ -24,34 +24,43 @@ use super::admin_login_qr::{
 };
 use super::admin_url::build_admin_url;
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 /// Display admin API credentials (Madmail `maddy admin-token`).
 pub async fn admin_token(args: &Args, raw: bool, no_qr: bool) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     ctx.require_db()?;
+    let out = CtlOut::from_args(args, "admin-token");
 
     let token = resolve_admin_token(&ctx.state_dir, &ctx.config)?;
     let settings = ctx.load_settings_map().await?;
     let api_url = build_admin_url(&ctx.config, &settings);
 
-    if raw {
+    if raw && !args.json {
         print!("{token}");
         return Ok(());
     }
 
-    println!();
-    println!("  Admin API URL:   {api_url}");
-    println!("  Admin Token:     {token}");
-    println!();
+    if out.is_json() {
+        return out.emit(serde_json::json!({
+            "token": token,
+            "api_url": api_url,
+        }));
+    }
+
+    out.blank();
+    out.line(format!("  Admin API URL:   {api_url}"));
+    out.line(format!("  Admin Token:     {token}"));
+    out.blank();
 
     if !no_qr {
         let login_url = build_admin_login_qr_url(&api_url, &token);
         let scan_payload = login_qr_scan_payload(&api_url, &token);
-        println!("  Scan with Madmail Admin (admin.madmail.chat):");
+        out.line("  Scan with Madmail Admin (admin.madmail.chat):");
         print_login_qr_terminal(&scan_payload)?;
-        println!();
-        println!("  Or open: {login_url}");
-        println!();
+        out.blank();
+        out.line(format!("  Or open: {login_url}"));
+        out.blank();
     }
 
     Ok(())

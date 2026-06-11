@@ -83,6 +83,8 @@ interactive install is not implemented yet; use --non-interactive or --simple
 | State directory | `/var/lib/madmail/` | `credentials.db`, `messages/`, `remote_queue/`, `autocert/` |
 | SQLite credentials DB | `{state_dir}/credentials.db` | Seeded with `__LANGUAGE__` from `--lang` |
 | Binary (system install) | `/usr/local/bin/madmail` | Skipped for non-system paths |
+| Man page (system install) | `/usr/share/man/man1/<binary>.1` | Embedded in the binary; `mandb` refreshed when available |
+| Shell completions (system install) | bash, zsh, fish under `/usr/share/…` | Tab completion for all CLI subcommands |
 | systemd unit (system install) | `/etc/systemd/system/madmail.service` | Skipped with `--skip-systemd` or non-system paths |
 | Service user (system install) | user/group `madmail` | `useradd -mrU`, home = state dir; skipped with `--skip-user` |
 
@@ -307,6 +309,34 @@ Supported languages: `en` (English), `fa` (Persian), `ru` (Russian), `es` (Spani
 
 ---
 
+## Shell completion and man page
+
+On **system install**, `madmail install` copies the embedded manual page and shell completion scripts into standard locations (using the executable basename from `argv[0]`):
+
+| Shell | Path |
+|-------|------|
+| man | `/usr/share/man/man1/<binary>.1` |
+| bash | `/usr/share/bash-completion/completions/<binary>` |
+| zsh | `/usr/share/zsh/site-functions/_<binary>` |
+| fish | `/usr/share/fish/vendor_completions.d/<binary>.fish` |
+
+After install, use `man madmail` (or `man <binary>`) and press Tab in bash/zsh/fish for subcommand completion.
+
+To install completions manually without a full system install:
+
+```bash
+madmail completion bash | sudo tee /usr/share/bash-completion/completions/madmail
+madmail completion zsh  | sudo tee /usr/share/zsh/site-functions/_madmail
+madmail completion fish | sudo tee /usr/share/fish/vendor_completions.d/madmail.fish
+```
+
+Hidden Madmail-compatible helpers (for packagers): `madmail generate-man`, `madmail generate-fish-completion`.
+
+The man page source is [`docs/man/madmail.1.scd`](../man/madmail.1.scd) (scdoc → groff **man** macros, following [man-pages(7)](https://man7.org/linux/man-pages/man7/man-pages.7.html)).
+Regenerate with `make man`; the rendered `docs/man/madmail.1` is embedded at build time.
+
+---
+
 ## After install
 
 | Task | Command |
@@ -315,6 +345,7 @@ Supported languages: `en` (English), `fa` (Persian), `ru` (Russian), `es` (Spani
 | Start (local paths) | `madmail --config <conf> run --libexec <state-dir>` |
 | Logs | `journalctl -u madmail -n 100 --no-pager` |
 | Admin API token | `madmail admin-token` |
+| Manual page | `man madmail` |
 | TLS renewal (autocert) | In-process `renew-certificate` task while server runs |
 | Re-issue cert | `madmail certificate get` or `regenerate` |
 
@@ -326,5 +357,7 @@ For IP/self-signed relays, Delta Chat clients may need to accept self-signed cer
 
 - [Docker deployment guide](docker.md) — container layout, volumes, `install` with `--skip-systemd`
 - [Install: public IP + Let's Encrypt](../install-simple-ip-acme.md) — `--auto-ip-cert` details
+- [CLI command reference](cli/README.md) — one page per `madmail` subcommand
+- [CLI JSON output](cli/json-output.md) — `--json` schemas for scripting
 - [CLI tools (TDD)](../TDD/14-cli-tools.md) — global flags and ctl overview
 - [Configuration (TDD)](../TDD/13-configuration.md) — runtime config after install

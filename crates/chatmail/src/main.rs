@@ -16,15 +16,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use chatmail::boot;
-use chatmail::ctl;
+use chatmail::ctl::{self, print_error_json};
 use chatmail_config::{Cli, Command};
-use chatmail_types::Result;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     let cli = Cli::parse_normalized();
-    match cli.command {
+    let json = cli.args.json;
+    let result = match cli.command {
         None | Some(Command::Run) => boot::run(cli.args).await,
         _ => ctl::dispatch(&cli).await,
+    };
+    if let Err(e) = result {
+        if json {
+            print_error_json(&e.to_string());
+        } else {
+            eprintln!("Error: {e}");
+        }
+        std::process::exit(1);
     }
 }

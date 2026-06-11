@@ -1,0 +1,27 @@
+# `reg-tokens`
+
+Alias for [`registration-tokens`](registration-tokens.md).
+
+```bash
+madmail reg-tokens   # same as: madmail registration-tokens
+```
+
+All subcommands and flags are identical. See [registration-tokens.md](registration-tokens.md).
+
+## JSON output (`--json`)
+
+```bash
+madmail reg tokens --json
+```
+
+Success stdout:
+
+```json
+{"ok": true, "command": "reg tokens", "data": { ... }}
+```
+
+Schema: [json-output.md](json-output.md#reg-tokens).
+
+
+---
+[← CLI index](README.md)

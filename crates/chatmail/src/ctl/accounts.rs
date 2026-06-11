@@ -35,6 +35,7 @@ use serde::{Deserialize, Serialize};
 use super::account_ops::{delete_account_full, is_internal_settings_key, provision_account};
 use super::blocklist_cmd::print_ban_list;
 use super::context::CtlContext;
+use super::output::CtlOut;
 use super::util::{confirm, read_password_stdin};
 
 const ADMIN_USERNAME_LEN: usize = 12;
@@ -61,10 +62,10 @@ pub async fn accounts(args: &Args, cmd: &AccountsCommand) -> Result<()> {
     let domain = registration_domain(&ctx);
 
     match cmd {
-        AccountsCommand::Status => accounts_status(&ctx, &pool, &mailbox).await,
+        AccountsCommand::Status => accounts_status(args, &ctx, &pool, &mailbox).await,
         AccountsCommand::Info { username } => {
             let u = ensure_email(username, &domain)?;
-            accounts_info(&ctx, &pool, &mailbox, &u).await
+            accounts_info(args, &ctx, &pool, &mailbox, &u).await
         }
         AccountsCommand::Create { username, password } => {
             let u = ensure_email(username, &domain)?;
@@ -72,14 +73,14 @@ pub async fn accounts(args: &Args, cmd: &AccountsCommand) -> Result<()> {
                 Some(p) => p.clone(),
                 None => read_password_stdin()?,
             };
-            accounts_create(&pool, &mailbox, &u, &pw).await
+            accounts_create(args, &pool, &mailbox, &u, &pw).await
         }
-        AccountsCommand::CreateRandom { json_only: _ } => {
-            create_random_account(&ctx, &pool, &mailbox).await
+        AccountsCommand::CreateRandom { json_only } => {
+            create_random_account(args, &ctx, &pool, &mailbox, *json_only).await
         }
         AccountsCommand::Delete { username, yes } => {
             let u = ensure_email(username, &domain)?;
-            accounts_delete(&pool, &mailbox, &u, *yes, CLI_DELETE_REASON).await
+            accounts_delete(args, &pool, &mailbox, &u, *yes, CLI_DELETE_REASON).await
         }
         AccountsCommand::Ban {
             username,
@@ -88,30 +89,38 @@ pub async fn accounts(args: &Args, cmd: &AccountsCommand) -> Result<()> {
         } => {
             let u = ensure_email(username, &domain)?;
             let r = reason.as_deref().unwrap_or(CLI_BAN_REASON);
-            accounts_delete(&pool, &mailbox, &u, *yes, r).await
+            accounts_delete(args, &pool, &mailbox, &u, *yes, r).await
         }
         AccountsCommand::Unban { username, yes } => {
             let u = ensure_email(username, &domain)?;
-            accounts_unban(&pool, &u, *yes).await
+            accounts_unban(args, &pool, &u, *yes).await
         }
-        AccountsCommand::BanList => print_ban_list(&pool).await,
-        AccountsCommand::Export { output } => accounts_export(&pool, output.as_deref()).await,
-        AccountsCommand::Import { file } => accounts_import(&pool, &mailbox, &domain, file).await,
-        AccountsCommand::DeleteAll { yes } => accounts_delete_all(&pool, &mailbox, *yes).await,
+        AccountsCommand::BanList => {
+            let out = CtlOut::from_args(args, "accounts ban-list");
+            print_ban_list(&pool, &out).await
+        }
+        AccountsCommand::Export { output } => accounts_export(args, &pool, output.as_deref()).await,
+        AccountsCommand::Import { file } => {
+            accounts_import(args, &pool, &mailbox, &domain, file).await
+        }
+        AccountsCommand::DeleteAll { yes } => {
+            accounts_delete_all(args, &pool, &mailbox, *yes).await
+        }
     }
 }
 
 pub async fn ban_list(args: &Args) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let pool = ctx.open_pool().await?;
-    print_ban_list(&pool).await
+    let out = CtlOut::from_args(args, "ban-list");
+    print_ban_list(&pool, &out).await
 }
 
-pub async fn create_user(args: &Args, _json_only: bool) -> Result<()> {
+pub async fn create_user(args: &Args, json_only: bool) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let pool = ctx.open_pool().await?;
     let mailbox = MailboxStore::new(&ctx.state_dir);
-    create_random_account(&ctx, &pool, &mailbox).await
+    create_random_account(args, &ctx, &pool, &mailbox, json_only).await
 }
 
 fn registration_domain(ctx: &CtlContext) -> String {
@@ -131,7 +140,13 @@ fn ensure_email(raw: &str, domain: &str) -> Result<String> {
     }
 }
 
-async fn accounts_status(ctx: &CtlContext, pool: &DbPool, mailbox: &MailboxStore) -> Result<()> {
+async fn accounts_status(
+    args: &Args,
+    ctx: &CtlContext,
+    pool: &DbPool,
+    mailbox: &MailboxStore,
+) -> Result<()> {
+    let out = CtlOut::from_args(args, "accounts status");
     let users = passwords::list_users(pool).await?;
     let login_count = users
         .iter()
@@ -154,30 +169,48 @@ async fn accounts_status(ctx: &CtlContext, pool: &DbPool, mailbox: &MailboxStore
         0
     };
 
-    println!("Login accounts: {login_count}");
-    println!("Registration: {}", if reg_open { "open" } else { "closed" });
-    println!(
+    if out.is_json() {
+        return out.emit(serde_json::json!({
+            "login_count": login_count,
+            "registration_open": reg_open,
+            "token_required": token_required,
+            "jit_enabled": jit,
+            "blocklisted": blocked,
+            "mail_directories": mail_count,
+            "state_dir": ctx.state_dir.display().to_string(),
+            "database": ctx.db_path.display().to_string(),
+        }));
+    }
+
+    out.line(format!("Login accounts: {login_count}"));
+    out.line(format!(
+        "Registration: {}",
+        if reg_open { "open" } else { "closed" }
+    ));
+    out.line(format!(
         "Registration token required: {}",
         if token_required { "yes" } else { "no" }
-    );
-    println!(
+    ));
+    out.line(format!(
         "JIT registration: {}",
         if jit { "enabled" } else { "disabled" }
-    );
-    println!("Blocklisted: {blocked}");
-    println!("Mail directories: {mail_count}");
-    println!("State directory: {}", ctx.state_dir.display());
-    println!("Database: {}", ctx.db_path.display());
+    ));
+    out.line(format!("Blocklisted: {blocked}"));
+    out.line(format!("Mail directories: {mail_count}"));
+    out.line(format!("State directory: {}", ctx.state_dir.display()));
+    out.line(format!("Database: {}", ctx.db_path.display()));
     let _ = mailbox;
     Ok(())
 }
 
 async fn accounts_info(
+    args: &Args,
     ctx: &CtlContext,
     pool: &DbPool,
     mailbox: &MailboxStore,
     username: &str,
 ) -> Result<()> {
+    let out = CtlOut::from_args(args, "accounts info");
     let hash = passwords::get_user_hash(pool, username).await?;
     let blocked = blocklist::is_blocked(pool, username).await?;
     let block_reason = if blocked {
@@ -199,45 +232,61 @@ async fn accounts_info(
     let maildir = mailbox.maildir_for_user(username);
     let mail_exists = maildir.root.exists();
 
-    println!("Username: {username}");
-    println!(
+    if out.is_json() {
+        return out.emit(serde_json::json!({
+            "username": username,
+            "credentials": hash.is_some(),
+            "blocklisted": blocked,
+            "block_reason": block_reason,
+            "created_at": if info.created_at > 0 { Some(info.created_at) } else { None },
+            "first_login_at": if info.first_login_at > 0 { Some(info.first_login_at) } else { None },
+            "last_login_at": if info.last_login_at > 0 { Some(info.last_login_at) } else { None },
+            "maildir_present": mail_exists,
+            "maildir_path": if mail_exists { Some(maildir.root.display().to_string()) } else { None },
+        }));
+    }
+
+    out.line(format!("Username: {username}"));
+    out.line(format!(
         "Credentials: {}",
         if hash.is_some() { "present" } else { "missing" }
-    );
+    ));
     if blocked {
-        println!(
+        out.line(format!(
             "Blocklisted: yes ({})",
             block_reason.as_deref().unwrap_or("unknown")
-        );
+        ));
     } else {
-        println!("Blocklisted: no");
+        out.line("Blocklisted: no");
     }
     if info.created_at > 0 {
-        println!("Created at (unix): {}", info.created_at);
+        out.line(format!("Created at (unix): {}", info.created_at));
     }
     if info.first_login_at > 0 {
-        println!("First login at (unix): {}", info.first_login_at);
+        out.line(format!("First login at (unix): {}", info.first_login_at));
     }
     if info.last_login_at > 0 {
-        println!("Last login at (unix): {}", info.last_login_at);
+        out.line(format!("Last login at (unix): {}", info.last_login_at));
     }
-    println!(
+    out.line(format!(
         "Maildir: {}",
         if mail_exists { "present" } else { "missing" }
-    );
+    ));
     if mail_exists {
-        println!("Maildir path: {}", maildir.root.display());
+        out.line(format!("Maildir path: {}", maildir.root.display()));
     }
     let _ = ctx;
     Ok(())
 }
 
 async fn accounts_create(
+    args: &Args,
     pool: &DbPool,
     mailbox: &MailboxStore,
     username: &str,
     password: &str,
 ) -> Result<()> {
+    let out = CtlOut::from_args(args, "accounts create");
     if passwords::user_exists(pool, username).await? {
         return Err(ChatmailError::config(format!(
             "account already exists: {username}"
@@ -250,15 +299,21 @@ async fn accounts_create(
     }
     let hash = hash_password(password)?;
     provision_account(pool, mailbox, username, &hash).await?;
-    println!("Created account: {username}");
-    Ok(())
+    out.done_msg(
+        format!("Created account: {username}"),
+        serde_json::json!({ "username": username }),
+        format!("Created account: {username}"),
+    )
 }
 
 async fn create_random_account(
+    args: &Args,
     ctx: &CtlContext,
     pool: &DbPool,
     mailbox: &MailboxStore,
+    json_only: bool,
 ) -> Result<()> {
+    let out = CtlOut::from_args(args, "create-user");
     let domain = registration_domain(ctx);
     let db_ports = load_mail_port_overrides(pool).await?;
     let mail = DcloginMailSettings::from_config_with_db(&ctx.config, None, &db_ports);
@@ -280,6 +335,20 @@ async fn create_random_account(
         match provision_account(pool, mailbox, &email, &hash).await {
             Ok(()) => {
                 let dclogin = build_dclogin_link(&email, &password, &mail);
+                if json_only && !args.json {
+                    let body = serde_json::to_string_pretty(&CreateUserResult { dclogin })
+                        .map_err(|e| ChatmailError::config(format!("JSON: {e}")))?;
+                    println!("{body}");
+                    return Ok(());
+                }
+                if args.json {
+                    return out.emit(serde_json::json!({
+                        "username": localpart,
+                        "password": password,
+                        "email": email,
+                        "dclogin": dclogin,
+                    }));
+                }
                 let body = serde_json::to_string_pretty(&CreateUserResult { dclogin })
                     .map_err(|e| ChatmailError::config(format!("JSON: {e}")))?;
                 println!("{body}");
@@ -294,36 +363,49 @@ async fn create_random_account(
 }
 
 async fn accounts_delete(
+    args: &Args,
     pool: &DbPool,
     mailbox: &MailboxStore,
     username: &str,
     yes: bool,
     reason: &str,
 ) -> Result<()> {
+    let out = CtlOut::from_args(args, "accounts delete");
     if !confirm(
         &format!("Delete account {username} (credentials, mail, blocklist)?"),
         yes,
     )? {
-        println!("Aborted.");
-        return Ok(());
+        return out.aborted();
     }
     delete_account_full(pool, mailbox, username, reason).await?;
-    println!("Deleted and blocklisted: {username}");
-    println!("Reason: {reason}");
-    Ok(())
+    if out.is_json() {
+        out.done_msg(
+            "",
+            serde_json::json!({ "username": username, "reason": reason }),
+            format!("Deleted and blocklisted: {username}"),
+        )
+    } else {
+        out.line(format!("Deleted and blocklisted: {username}"));
+        out.line(format!("Reason: {reason}"));
+        Ok(())
+    }
 }
 
-async fn accounts_unban(pool: &DbPool, username: &str, yes: bool) -> Result<()> {
+async fn accounts_unban(args: &Args, pool: &DbPool, username: &str, yes: bool) -> Result<()> {
+    let out = CtlOut::from_args(args, "accounts unban");
     if !confirm(&format!("Unblock {username}?"), yes)? {
-        println!("Aborted.");
-        return Ok(());
+        return out.aborted();
     }
     blocklist::unblock_user(pool, username).await?;
-    println!("Unblocked: {username}");
-    Ok(())
+    out.done_msg(
+        format!("Unblocked: {username}"),
+        serde_json::json!({ "username": username }),
+        format!("Unblocked: {username}"),
+    )
 }
 
-async fn accounts_export(pool: &DbPool, output: Option<&Path>) -> Result<()> {
+async fn accounts_export(args: &Args, pool: &DbPool, output: Option<&Path>) -> Result<()> {
+    let out = CtlOut::from_args(args, "accounts export");
     let users = passwords::list_users(pool).await?;
     let mut entries = Vec::new();
     for u in users {
@@ -341,19 +423,27 @@ async fn accounts_export(pool: &DbPool, output: Option<&Path>) -> Result<()> {
         .map_err(|e| ChatmailError::config(format!("export JSON: {e}")))?;
     if let Some(path) = output {
         fs::write(path, &body)?;
-        println!("Exported {} accounts to {}", entries.len(), path.display());
+        out.done_msg(
+            format!("Exported {} accounts to {}", entries.len(), path.display()),
+            serde_json::json!({ "count": entries.len(), "output": path.display().to_string() }),
+            format!("Exported {} accounts", entries.len()),
+        )
+    } else if out.is_json() {
+        out.emit(serde_json::json!({ "accounts": entries }))
     } else {
         println!("{body}");
+        Ok(())
     }
-    Ok(())
 }
 
 async fn accounts_import(
+    args: &Args,
     pool: &DbPool,
     mailbox: &MailboxStore,
     domain: &str,
     file: &Path,
 ) -> Result<()> {
+    let out = CtlOut::from_args(args, "accounts import");
     let raw = fs::read_to_string(file)?;
     let users: Vec<ExportUser> = serde_json::from_str(&raw)
         .map_err(|e| ChatmailError::config(format!("invalid import JSON: {e}")))?;
@@ -415,14 +505,28 @@ async fn accounts_import(
         imported += 1;
     }
 
-    println!("Imported: {imported}, skipped: {skipped}");
-    for e in errors {
-        eprintln!("{e}");
+    if out.is_json() {
+        out.emit(serde_json::json!({
+            "imported": imported,
+            "skipped": skipped,
+            "errors": errors,
+        }))
+    } else {
+        out.line(format!("Imported: {imported}, skipped: {skipped}"));
+        for e in errors {
+            eprintln!("{e}");
+        }
+        Ok(())
     }
-    Ok(())
 }
 
-async fn accounts_delete_all(pool: &DbPool, mailbox: &MailboxStore, yes: bool) -> Result<()> {
+async fn accounts_delete_all(
+    args: &Args,
+    pool: &DbPool,
+    mailbox: &MailboxStore,
+    yes: bool,
+) -> Result<()> {
+    let out = CtlOut::from_args(args, "accounts delete-all");
     let users = passwords::list_users(pool).await?;
     let count = users
         .iter()
@@ -432,8 +536,7 @@ async fn accounts_delete_all(pool: &DbPool, mailbox: &MailboxStore, yes: bool) -
         &format!("Delete ALL {count} user accounts (destructive)?"),
         yes,
     )? {
-        println!("Aborted.");
-        return Ok(());
+        return out.aborted();
     }
 
     let mut deleted = 0i32;
@@ -446,8 +549,11 @@ async fn accounts_delete_all(pool: &DbPool, mailbox: &MailboxStore, yes: bool) -
             Err(e) => eprintln!("{u}: {e}"),
         }
     }
-    println!("Deleted {deleted} accounts (blocklisted with bulk reason).");
-    Ok(())
+    out.done_msg(
+        format!("Deleted {deleted} accounts (blocklisted with bulk reason)."),
+        serde_json::json!({ "deleted": deleted }),
+        format!("Deleted {deleted} accounts"),
+    )
 }
 
 fn random_alnum(len: usize) -> Result<String> {
@@ -473,8 +579,14 @@ fn random_password(len: usize) -> Result<String> {
 mod tests {
     use super::*;
     use chatmail_auth::verify_password;
+    use chatmail_config::Cli;
     use chatmail_db::init_db;
+    use clap::Parser;
     use tempfile::TempDir;
+
+    fn test_args() -> Args {
+        Cli::try_parse_from(["chatmail"]).unwrap().args
+    }
 
     #[tokio::test]
     async fn cli_accounts_create_delete_blocklist() {
@@ -510,7 +622,7 @@ mod tests {
             .unwrap();
 
         let export_path = dir.path().join("out.json");
-        accounts_export(&pool, Some(export_path.as_path()))
+        accounts_export(&test_args(), &pool, Some(export_path.as_path()))
             .await
             .unwrap();
 
@@ -519,9 +631,15 @@ mod tests {
             .unwrap();
         blocklist::unblock_user(&pool, email).await.unwrap();
 
-        accounts_import(&pool, &mailbox, "example.org", export_path.as_path())
-            .await
-            .unwrap();
+        accounts_import(
+            &test_args(),
+            &pool,
+            &mailbox,
+            "example.org",
+            export_path.as_path(),
+        )
+        .await
+        .unwrap();
         assert!(passwords::user_exists(&pool, email).await.unwrap());
     }
 
@@ -540,9 +658,15 @@ mod tests {
         )
         .unwrap();
 
-        accounts_import(&pool, &mailbox, "example.org", import_path.as_path())
-            .await
-            .unwrap();
+        accounts_import(
+            &test_args(),
+            &pool,
+            &mailbox,
+            "example.org",
+            import_path.as_path(),
+        )
+        .await
+        .unwrap();
 
         let stored = passwords::get_user_hash(&pool, email)
             .await
@@ -565,6 +689,7 @@ mod tests {
             .unwrap();
 
         accounts_status(
+            &test_args(),
             &CtlContext {
                 config,
                 state_dir,

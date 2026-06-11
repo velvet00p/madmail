@@ -73,16 +73,27 @@ fn is_download_url(input: &str) -> bool {
 }
 
 /// Entry point for `chatmail upgrade` and `chatmail update` (Madmail `upgradeCommand`).
-pub fn upgrade_command(input: &str) -> Result<()> {
+pub fn upgrade_command(input: &str, json: bool) -> Result<()> {
     let input = input.trim();
     if input.is_empty() {
         return Err(ChatmailError::config("PATH or URL is required"));
     }
-    if is_download_url(input) {
+    let result = if is_download_url(input) {
         handle_update_url(input)
     } else {
         perform_upgrade(Path::new(input))
+    };
+    if result.is_ok() && json {
+        let envelope = serde_json::json!({
+            "ok": true,
+            "command": "upgrade",
+            "data": {}
+        });
+        if let Ok(body) = serde_json::to_string(&envelope) {
+            println!("{body}");
+        }
     }
+    result
 }
 
 fn build_download_client() -> Result<Client> {
@@ -270,7 +281,7 @@ mod tests {
 
     #[test]
     fn upgrade_command_requires_input() {
-        let err = upgrade_command("  ").unwrap_err();
+        let err = upgrade_command("  ", false).unwrap_err();
         assert!(err.to_string().contains("PATH or URL is required"));
     }
 }

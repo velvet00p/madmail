@@ -22,23 +22,30 @@ use chatmail_state::ReloadScope;
 use chatmail_types::{ChatmailError, Result};
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 use super::request_reload::{request_soft_reload, SoftReloadOutcome};
 
 pub async fn reload(args: &Args, url_override: Option<&str>, insecure: bool) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     ctx.require_db()?;
+    let out = CtlOut::from_args(args, "reload");
 
     match request_soft_reload(&ctx, url_override, insecure, ReloadScope::Full, false).await? {
         SoftReloadOutcome::Accepted { api_url } => {
-            println!(
-                "✅ Soft reload requested at {api_url} — listeners and HTTP routes restart in place (no process exit)."
-            );
+            if out.is_json() {
+                out.emit(serde_json::json!({
+                    "api_url": api_url,
+                    "reloaded": true,
+                }))
+            } else {
+                out.line(format!(
+                    "✅ Soft reload requested at {api_url} — listeners and HTTP routes restart in place (no process exit)."
+                ));
+                Ok(())
+            }
         }
-        SoftReloadOutcome::ServerNotRunning => {
-            return Err(ChatmailError::config(
-                "could not reach admin API — is the server running? Use --url or check hostname/ports",
-            ));
-        }
+        SoftReloadOutcome::ServerNotRunning => Err(ChatmailError::config(
+            "could not reach admin API — is the server running? Use --url or check hostname/ports",
+        )),
     }
-    Ok(())
 }

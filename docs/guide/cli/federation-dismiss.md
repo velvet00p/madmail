@@ -1,0 +1,29 @@
+# `madmail federation dismiss`
+
+Parent: [`federation`](federation.md)
+
+Add domain to silent-dismiss list (accept mail, do not deliver)
+
+## Synopsis
+
+```bash
+madmail federation dismiss [OPTIONS] <DOMAIN>
+```
+
+## JSON output (`--json`)
+
+```bash
+madmail federation dismiss --json
+```
+
+Success stdout:
+
+```json
+{"ok": true, "command": "federation dismiss", "data": { ... }}
+```
+
+Schema: [json-output.md](json-output.md#federation-dismiss).
+
+
+---
+[← `federation`](federation.md) · [CLI index](README.md) · [Global flags](global-flags.md)

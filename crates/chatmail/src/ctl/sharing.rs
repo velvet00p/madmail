@@ -26,44 +26,75 @@ use chatmail_db::{
 use chatmail_types::{ChatmailError, Result};
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 pub async fn sharing(args: &Args, cmd: &SharingCommand) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let sharing_path = ctx.state_dir.join("sharing.db");
     let pool = init_sharing_db(&sharing_path).await?;
+    let out = CtlOut::from_args(args, "sharing");
 
     match cmd {
         SharingCommand::List => {
             let contacts = list_sharing_contacts(&pool).await?;
-            if contacts.is_empty() {
-                println!("SLUG\tNAME\tURL\tCREATED AT");
-                return Ok(());
+            if out.is_json() {
+                let entries: Vec<_> = contacts
+                    .into_iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "slug": c.slug,
+                            "name": c.name,
+                            "url": c.url,
+                            "created_at": c.created_at,
+                        })
+                    })
+                    .collect();
+                return out.emit(serde_json::json!({ "entries": entries }));
             }
-            println!("SLUG\tNAME\tURL\tCREATED AT");
+            out.line("SLUG\tNAME\tURL\tCREATED AT");
             for c in contacts {
-                println!("{}\t{}\t{}\t{}", c.slug, c.name, c.url, c.created_at);
+                out.line(format!(
+                    "{}\t{}\t{}\t{}",
+                    c.slug, c.name, c.url, c.created_at
+                ));
             }
         }
         SharingCommand::Create { slug, url, name } => {
             let name = name.as_deref().unwrap_or("");
             create_sharing_contact(&pool, slug, url, name).await?;
-            println!("Successfully created link: {slug}");
+            out.done_msg(
+                format!("Successfully created link: {slug}"),
+                serde_json::json!({ "slug": slug, "url": url, "name": name }),
+                format!("Created link: {slug}"),
+            )?;
         }
         SharingCommand::Reserve { slug } => {
             create_sharing_contact(&pool, slug, "reserved", "Reserved").await?;
-            println!("Successfully created link: {slug}");
+            out.done_msg(
+                format!("Successfully created link: {slug}"),
+                serde_json::json!({ "slug": slug, "reserved": true }),
+                format!("Reserved slug: {slug}"),
+            )?;
         }
         SharingCommand::Remove { slug } => {
             if !remove_sharing_contact(&pool, slug).await? {
                 return Err(ChatmailError::config(format!("slug {slug} not found")));
             }
-            println!("Successfully removed link: {slug}");
+            out.done_msg(
+                format!("Successfully removed link: {slug}"),
+                serde_json::json!({ "slug": slug }),
+                format!("Removed link: {slug}"),
+            )?;
         }
         SharingCommand::Edit { slug, url, name } => {
             if !update_sharing_contact(&pool, slug, url, name.as_deref()).await? {
                 return Err(ChatmailError::config(format!("slug {slug} not found")));
             }
-            println!("Successfully updated link: {slug}");
+            out.done_msg(
+                format!("Successfully updated link: {slug}"),
+                serde_json::json!({ "slug": slug, "url": url, "name": name }),
+                format!("Updated link: {slug}"),
+            )?;
         }
     }
     Ok(())

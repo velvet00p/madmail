@@ -25,16 +25,22 @@ use chatmail_types::{ChatmailError, Result};
 use chatmail_www::export_www_files;
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 pub async fn html_export(args: &Args, dest: &Path) -> Result<()> {
     let _ = CtlContext::from_args(args)?;
+    let out = CtlOut::from_args(args, "html-export");
     let n = export_www_files(dest)?;
-    println!("Successfully exported {n} files to {}", dest.display());
-    Ok(())
+    out.done_msg(
+        format!("Successfully exported {n} files to {}", dest.display()),
+        serde_json::json!({ "dest": dest.display().to_string(), "files": n }),
+        format!("Exported {n} files"),
+    )
 }
 
 pub async fn html_serve(args: &Args, www_dir: &str) -> Result<()> {
     let _ctx = CtlContext::from_args(args)?;
+    let out = CtlOut::from_args(args, "html-serve");
 
     let embedded = matches!(
         www_dir.trim().to_ascii_lowercase().as_str(),
@@ -63,23 +69,45 @@ pub async fn html_serve(args: &Args, www_dir: &str) -> Result<()> {
 
     update_config_www_dir(&args.config, www_path.as_deref())?;
 
+    if out.is_json() {
+        return out.done_msg(
+            "",
+            serde_json::json!({
+                "config": args.config.display().to_string(),
+                "embedded": embedded,
+                "www_dir": www_path.as_ref().map(|p| p.display().to_string()),
+            }),
+            if embedded {
+                "Updated config to use embedded HTML".into()
+            } else {
+                format!(
+                    "Updated config to serve HTML from {}",
+                    www_path.as_ref().unwrap().display()
+                )
+            },
+        );
+    }
+
     if embedded {
-        println!(
+        out.line(format!(
             "Successfully updated {} to use embedded HTML files.",
             args.config.display()
-        );
+        ));
     } else {
         let p = www_path.as_ref().unwrap();
-        println!(
+        out.line(format!(
             "Successfully updated {} to serve HTML from {}",
             args.config.display(),
             p.display()
-        );
-        println!();
-        println!("Ensure the chatmail service user can read this directory.");
-        println!("Example: sudo chown -R chatmail:chatmail {}", p.display());
+        ));
+        out.blank();
+        out.line("Ensure the chatmail service user can read this directory.");
+        out.line(format!(
+            "Example: sudo chown -R chatmail:chatmail {}",
+            p.display()
+        ));
     }
-    println!();
-    println!("Restart chatmail to apply: sudo systemctl restart madmail");
+    out.blank();
+    out.line("Restart chatmail to apply: sudo systemctl restart madmail");
     Ok(())
 }

@@ -27,9 +27,10 @@ use chatmail_config::{
 };
 use chatmail_db::passwords;
 use chatmail_types::Result;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 const DEFAULT_RUNTIME_DIR: &str = "/run/madmail";
 const STATUS_FILE: &str = "server_tracker.json";
@@ -49,7 +50,7 @@ struct PortScan {
     state_dir: String,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Serialize)]
 struct ServerTrackerStatus {
     boot_time: i64,
     unique_conn_ips: i32,
@@ -62,6 +63,7 @@ struct ConnInfo {
 }
 
 pub async fn status(args: &Args, details: bool) -> Result<()> {
+    let out = CtlOut::from_args(args, "status");
     let ctx = CtlContext::from_args(args)?;
     let config = if args.config.is_file() {
         load_config(&args.config)?
@@ -101,24 +103,104 @@ pub async fn status(args: &Args, details: bool) -> Result<()> {
         port_results.push((p.clone(), conns));
     }
 
+    let registered_users = if let Ok(pool) = ctx.open_pool().await {
+        passwords::list_users(&pool).await.ok().map(|u| u.len())
+    } else {
+        None
+    };
+
+    let tracker = read_server_tracker(&scan.runtime_dir).ok();
+    let uptime_seconds = tracker.as_ref().and_then(|st| {
+        if st.boot_time > 0 {
+            let boot = SystemTime::UNIX_EPOCH + Duration::from_secs(st.boot_time as u64);
+            Some(
+                SystemTime::now()
+                    .duration_since(boot)
+                    .unwrap_or_default()
+                    .as_secs(),
+            )
+        } else {
+            None
+        }
+    });
+
+    if out.is_json() {
+        let services: Vec<_> = ["IMAP", "TURN", "Shadowsocks"]
+            .iter()
+            .filter_map(|svc| {
+                service_totals.get(*svc).map(|count| {
+                    let ips = service_ips.get(*svc).map(|s| s.len()).unwrap_or(0);
+                    serde_json::json!({
+                        "name": svc,
+                        "connections": count,
+                        "unique_ips": ips,
+                    })
+                })
+            })
+            .collect();
+
+        let mut data = serde_json::json!({
+            "services": services,
+            "registered_users": registered_users,
+        });
+
+        if details {
+            let ports: Vec<_> = port_results
+                .iter()
+                .map(|(info, conns)| {
+                    let mut ips = HashSet::new();
+                    for c in conns {
+                        if c.remote_addr != "relay" {
+                            ips.insert(extract_ip(&c.remote_addr));
+                        }
+                    }
+                    serde_json::json!({
+                        "port": info.port,
+                        "proto": info.proto,
+                        "label": info.label,
+                        "service": info.service,
+                        "connections": conns.len(),
+                        "unique_ips": if info.service == "TURN" && info.proto == "udp" { serde_json::Value::Null } else { serde_json::json!(ips.len()) },
+                    })
+                })
+                .collect();
+            data["ports"] = serde_json::json!(ports);
+        }
+
+        if let Some(st) = tracker {
+            data["server_tracker"] = serde_json::json!({
+                "boot_time": st.boot_time,
+                "uptime_seconds": uptime_seconds,
+                "unique_conn_ips": st.unique_conn_ips,
+                "unique_domains": st.unique_domains,
+                "unique_ip_servers": st.unique_ip_servers,
+            });
+        }
+
+        return out.emit(data);
+    }
+
     for svc in ["IMAP", "TURN", "Shadowsocks"] {
         let Some(count) = service_totals.get(svc) else {
             continue;
         };
         let ips = service_ips.get(svc).map(|s| s.len()).unwrap_or(0);
         match svc {
-            "TURN" => println!("{:<15} relays: {count}", svc),
-            _ => println!("{:<15} connections: {count:<6} unique IPs: {ips}", svc),
+            "TURN" => out.line(format!("{:<15} relays: {count}", svc)),
+            _ => out.line(format!(
+                "{:<15} connections: {count:<6} unique IPs: {ips}",
+                svc
+            )),
         }
     }
 
     if details && !port_results.is_empty() {
-        println!();
-        println!("Per-port breakdown:");
-        println!(
+        out.blank();
+        out.line("Per-port breakdown:");
+        out.line(format!(
             "{:<6}\t{:<5}\t{:<18}\t{:<12}\tUNIQUE IPs",
             "PORT", "PROTO", "TYPE", "CONNECTIONS"
-        );
+        ));
         for (info, conns) in &port_results {
             let mut ips = HashSet::new();
             for c in conns {
@@ -127,51 +209,46 @@ pub async fn status(args: &Args, details: bool) -> Result<()> {
                 }
             }
             if info.service == "TURN" && info.proto == "udp" {
-                println!(
+                out.line(format!(
                     "{}\t{}\t{}\t{} relays\t-",
                     info.port,
                     info.proto,
                     info.label,
                     conns.len()
-                );
+                ));
             } else {
-                println!(
+                out.line(format!(
                     "{}\t{}\t{}\t{}\t{}",
                     info.port,
                     info.proto,
                     info.label,
                     conns.len(),
                     ips.len()
-                );
+                ));
             }
         }
     }
 
-    if let Ok(pool) = ctx.open_pool().await {
-        let users = passwords::list_users(&pool).await?;
-        println!();
-        println!("Registered users:   {}", users.len());
+    if let Some(count) = registered_users {
+        out.blank();
+        out.line(format!("Registered users:   {count}"));
     }
 
-    if let Ok(st) = read_server_tracker(&scan.runtime_dir) {
+    if let Some(st) = tracker {
         if st.boot_time > 0 {
-            let boot = SystemTime::UNIX_EPOCH + Duration::from_secs(st.boot_time as u64);
-            let uptime = SystemTime::now()
-                .duration_since(boot)
-                .unwrap_or_default()
-                .as_secs();
-            println!(
+            let uptime = uptime_seconds.unwrap_or(0);
+            out.line(format!(
                 "Boot time:          {} (up {})",
                 format_boot_time(st.boot_time),
                 format_uptime(uptime)
-            );
+            ));
         }
         if st.unique_conn_ips > 0 || st.unique_domains > 0 || st.unique_ip_servers > 0 {
-            println!();
-            println!("Email servers seen (since last restart):");
-            println!("  Connection IPs:   {}", st.unique_conn_ips);
-            println!("  Domain servers:   {}", st.unique_domains);
-            println!("  IP servers:       {}", st.unique_ip_servers);
+            out.blank();
+            out.line("Email servers seen (since last restart):");
+            out.line(format!("  Connection IPs:   {}", st.unique_conn_ips));
+            out.line(format!("  Domain servers:   {}", st.unique_domains));
+            out.line(format!("  IP servers:       {}", st.unique_ip_servers));
         }
     }
 

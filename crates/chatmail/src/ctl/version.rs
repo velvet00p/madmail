@@ -15,7 +15,39 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use chatmail_config::Args;
+use chatmail_types::Result;
+
+use super::output::CtlOut;
+
+/// Product name printed by `madmail version` (Madmail parity: `madmail-v2 2.4.0`).
+pub const VERSION_PRODUCT: &str = "madmail-v2";
+
 /// Print package version (Madmail `maddy version`).
-pub fn print_version() {
-    println!("chatmail {} (chatmail-rs)", env!("CARGO_PKG_VERSION"));
+pub fn print_version(args: &Args) -> Result<()> {
+    let out = CtlOut::from_args(args, "version");
+    let version = env!("CARGO_PKG_VERSION");
+    if out.is_json() {
+        out.emit(serde_json::json!({
+            "name": VERSION_PRODUCT,
+            "version": version,
+        }))?;
+    } else {
+        println!("{VERSION_PRODUCT} {version}");
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_text_matches_madmail_v2_format() {
+        let version = env!("CARGO_PKG_VERSION");
+        assert_eq!(
+            format!("{VERSION_PRODUCT} {version}"),
+            format!("madmail-v2 {version}")
+        );
+    }
 }

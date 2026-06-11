@@ -11,57 +11,73 @@ use chatmail_push::{
 use chatmail_types::Result;
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 pub async fn push(args: &Args, cmd: &PushCommand) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let pool = ctx.open_pool().await?;
 
     match cmd {
-        PushCommand::Status => status(&pool).await,
-        PushCommand::Auto => set_mode(&pool, PushMode::Auto, "auto").await,
-        PushCommand::On => set_mode(&pool, PushMode::On, "on").await,
-        PushCommand::Off => set_mode(&pool, PushMode::Off, "off").await,
+        PushCommand::Status => status(args, &pool).await,
+        PushCommand::Auto => set_mode(args, &pool, PushMode::Auto, "auto").await,
+        PushCommand::On => set_mode(args, &pool, PushMode::On, "on").await,
+        PushCommand::Off => set_mode(args, &pool, PushMode::Off, "off").await,
     }
 }
 
-async fn status(pool: &chatmail_db::DbPool) -> Result<()> {
+async fn status(args: &Args, pool: &chatmail_db::DbPool) -> Result<()> {
+    let out = CtlOut::from_args(args, "push status");
     let mode = push_mode(pool).await?;
     let enabled = push_runtime_enabled(pool).await?;
-    println!();
-    println!("  Push notifications (XDELTAPUSH)");
-    println!("  Mode:       {}", mode.as_str());
-    println!(
+    let failures = consecutive_failures();
+
+    if out.is_json() {
+        return out.emit(serde_json::json!({
+            "mode": mode.as_str(),
+            "runtime_enabled": enabled,
+            "failures": failures,
+            "auto_disable_threshold": AUTO_DISABLE_AFTER_FAILURES,
+        }));
+    }
+
+    out.blank();
+    out.line("  Push notifications (XDELTAPUSH)");
+    out.line(format!("  Mode:       {}", mode.as_str()));
+    out.line(format!(
         "  Runtime:    {}",
         if enabled { "enabled" } else { "disabled" }
-    );
-    println!("  Successful: {}", push_stats_snapshot());
-    println!(
-        "  Failures:   {} (auto disables at {})",
-        consecutive_failures(),
-        AUTO_DISABLE_AFTER_FAILURES
-    );
+    ));
+    out.line(format!("  Successful: {}", push_stats_snapshot()));
+    out.line(format!(
+        "  Failures:   {failures} (auto disables at {AUTO_DISABLE_AFTER_FAILURES})"
+    ));
     if mode == PushMode::Auto {
-        println!("  Auto mode:  disables push after {AUTO_DISABLE_AFTER_FAILURES} consecutive");
-        println!("              notification-proxy failures (>20s or HTTP error)");
+        out.line(format!(
+            "  Auto mode:  disables push after {AUTO_DISABLE_AFTER_FAILURES} consecutive"
+        ));
+        out.line("              notification-proxy failures (>20s or HTTP error)");
     }
-    println!("  (run `madmail reload` to refresh IMAP XDELTAPUSH advertisement)");
-    println!();
+    out.line("  (run `madmail reload` to refresh IMAP XDELTAPUSH advertisement)");
+    out.blank();
     Ok(())
 }
 
-async fn set_mode(pool: &chatmail_db::DbPool, mode: PushMode, label: &str) -> Result<()> {
+async fn set_mode(
+    args: &Args,
+    pool: &chatmail_db::DbPool,
+    mode: PushMode,
+    label: &str,
+) -> Result<()> {
+    let out = CtlOut::from_args(args, "push");
     set_push_mode(pool, mode).await?;
-    println!(
-        "✅ Push mode set to {label} ({})",
-        if mode.runtime_enabled() {
-            "enabled"
-        } else {
-            "disabled"
-        }
-    );
-    if mode == PushMode::Auto {
-        println!("   Auto-disable after {AUTO_DISABLE_AFTER_FAILURES} consecutive proxy failures");
-    }
-    println!("   Run `madmail reload` to refresh IMAP capabilities");
-    Ok(())
+    let runtime = mode.runtime_enabled();
+    let msg = format!("Push mode set to {label}");
+    out.done_msg(
+        format!(
+            "✅ Push mode set to {label} ({})",
+            if runtime { "enabled" } else { "disabled" }
+        ),
+        serde_json::json!({ "mode": label, "runtime_enabled": runtime }),
+        msg,
+    )
 }

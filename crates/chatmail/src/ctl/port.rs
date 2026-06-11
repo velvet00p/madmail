@@ -23,10 +23,13 @@ use chatmail_config::cli::{PortCommand, PortServiceCommand};
 use chatmail_config::Args;
 use chatmail_db::{delete_setting, set_setting, settings_keys};
 use chatmail_types::{ChatmailError, Result};
+use serde::Serialize;
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 struct PortSpec {
+    name: &'static str,
     display: &'static str,
     port_key: &'static str,
     default_port: &'static str,
@@ -35,66 +38,77 @@ struct PortSpec {
 
 const PORT_SPECS: &[PortSpec] = &[
     PortSpec {
+        name: "smtp",
         display: "SMTP (25)",
         port_key: settings_keys::SMTP_PORT,
         default_port: "25",
         local_keys: &[settings_keys::SMTP_LOCAL_ONLY],
     },
     PortSpec {
+        name: "submission",
         display: "Submission (587)",
         port_key: settings_keys::SUBMISSION_PORT,
         default_port: "587",
         local_keys: &[settings_keys::SUBMISSION_LOCAL_ONLY],
     },
     PortSpec {
+        name: "submission-tls",
         display: "Submission TLS (465)",
         port_key: settings_keys::SUBMISSION_TLS_PORT,
         default_port: "465",
         local_keys: &[settings_keys::SUBMISSION_TLS_LOCAL_ONLY],
     },
     PortSpec {
+        name: "imap",
         display: "IMAP (143)",
         port_key: settings_keys::IMAP_PORT,
         default_port: "143",
         local_keys: &[settings_keys::IMAP_LOCAL_ONLY],
     },
     PortSpec {
+        name: "imap-tls",
         display: "IMAP TLS (993)",
         port_key: settings_keys::IMAP_TLS_PORT,
         default_port: "993",
         local_keys: &[settings_keys::IMAP_TLS_LOCAL_ONLY],
     },
     PortSpec {
+        name: "turn",
         display: "TURN (3478)",
         port_key: settings_keys::TURN_PORT,
         default_port: "3478",
         local_keys: &[settings_keys::TURN_LOCAL_ONLY],
     },
     PortSpec {
+        name: "sasl",
         display: "SASL (24)",
         port_key: settings_keys::SASL_PORT,
         default_port: "24",
         local_keys: &[settings_keys::SASL_LOCAL_ONLY],
     },
     PortSpec {
+        name: "iroh",
         display: "Iroh (3340)",
         port_key: settings_keys::IROH_PORT,
         default_port: "3340",
         local_keys: &[settings_keys::IROH_LOCAL_ONLY],
     },
     PortSpec {
+        name: "shadowsocks",
         display: "Shadowsocks (8388)",
         port_key: settings_keys::SS_PORT,
         default_port: "8388",
         local_keys: &[],
     },
     PortSpec {
+        name: "http",
         display: "HTTP (80)",
         port_key: settings_keys::HTTP_PORT,
         default_port: "80",
         local_keys: &[settings_keys::HTTP_LOCAL_ONLY],
     },
     PortSpec {
+        name: "https",
         display: "HTTPS (443)",
         port_key: settings_keys::HTTPS_PORT,
         default_port: "443",
@@ -102,57 +116,93 @@ const PORT_SPECS: &[PortSpec] = &[
     },
 ];
 
+#[derive(Serialize)]
+struct PortServiceStatus {
+    name: &'static str,
+    port: String,
+    mode: &'static str,
+}
+
 pub async fn port(args: &Args, cmd: &PortCommand) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let pool = ctx.open_pool().await?;
     let settings = ctx.load_settings_map().await?;
 
     match cmd {
-        PortCommand::Status => port_status_all(&settings),
-        PortCommand::Smtp(c) => port_service(&pool, &settings, &PORT_SPECS[0], c).await,
-        PortCommand::Submission(c) => port_service(&pool, &settings, &PORT_SPECS[1], c).await,
-        PortCommand::SubmissionTls(c) => port_service(&pool, &settings, &PORT_SPECS[2], c).await,
-        PortCommand::Imap(c) => port_service(&pool, &settings, &PORT_SPECS[3], c).await,
-        PortCommand::ImapTls(c) => port_service(&pool, &settings, &PORT_SPECS[4], c).await,
-        PortCommand::Turn(c) => port_service(&pool, &settings, &PORT_SPECS[5], c).await,
-        PortCommand::Sasl(c) => port_service(&pool, &settings, &PORT_SPECS[6], c).await,
-        PortCommand::Iroh(c) => port_service(&pool, &settings, &PORT_SPECS[7], c).await,
-        PortCommand::Shadowsocks(c) => port_service(&pool, &settings, &PORT_SPECS[8], c).await,
-        PortCommand::Http(c) => port_service(&pool, &settings, &PORT_SPECS[9], c).await,
-        PortCommand::Https(c) => port_service(&pool, &settings, &PORT_SPECS[10], c).await,
+        PortCommand::Status => port_status_all(args, &settings),
+        PortCommand::Smtp(c) => port_service(args, &pool, &settings, &PORT_SPECS[0], c).await,
+        PortCommand::Submission(c) => port_service(args, &pool, &settings, &PORT_SPECS[1], c).await,
+        PortCommand::SubmissionTls(c) => {
+            port_service(args, &pool, &settings, &PORT_SPECS[2], c).await
+        }
+        PortCommand::Imap(c) => port_service(args, &pool, &settings, &PORT_SPECS[3], c).await,
+        PortCommand::ImapTls(c) => port_service(args, &pool, &settings, &PORT_SPECS[4], c).await,
+        PortCommand::Turn(c) => port_service(args, &pool, &settings, &PORT_SPECS[5], c).await,
+        PortCommand::Sasl(c) => port_service(args, &pool, &settings, &PORT_SPECS[6], c).await,
+        PortCommand::Iroh(c) => port_service(args, &pool, &settings, &PORT_SPECS[7], c).await,
+        PortCommand::Shadowsocks(c) => {
+            port_service(args, &pool, &settings, &PORT_SPECS[8], c).await
+        }
+        PortCommand::Http(c) => port_service(args, &pool, &settings, &PORT_SPECS[9], c).await,
+        PortCommand::Https(c) => port_service(args, &pool, &settings, &PORT_SPECS[10], c).await,
     }
 }
 
-fn port_status_all(settings: &HashMap<String, String>) -> Result<()> {
-    println!();
+fn port_status_all(args: &Args, settings: &HashMap<String, String>) -> Result<()> {
+    let out = CtlOut::from_args(args, "port status");
+    if out.is_json() {
+        let services: Vec<PortServiceStatus> = PORT_SPECS
+            .iter()
+            .map(|spec| PortServiceStatus {
+                name: spec.name,
+                port: service_port_value(settings, spec),
+                mode: service_mode(settings, spec),
+            })
+            .collect();
+        return out.emit(serde_json::json!({ "services": services }));
+    }
+    out.blank();
     for spec in PORT_SPECS {
         let mode = service_mode(settings, spec);
-        let port = service_port(settings, spec);
-        println!(
+        let port = service_port_display(settings, spec);
+        out.line(format!(
             "  {:<24} port={port} mode={mode}",
             format!("{}:", spec.display)
-        );
+        ));
     }
-    println!();
-    println!("  Note: restart service after changes.");
-    println!();
+    out.blank();
+    out.line("  Note: restart service after changes.");
+    out.blank();
     Ok(())
 }
 
 async fn port_service(
+    args: &Args,
     pool: &chatmail_db::DbPool,
     settings: &HashMap<String, String>,
     spec: &PortSpec,
     cmd: &PortServiceCommand,
 ) -> Result<()> {
+    let out = CtlOut::from_args(args, "port");
     match cmd {
         PortServiceCommand::Status => {
-            println!();
-            println!("  {}:", spec.display);
-            println!("    port: {}", service_port(settings, spec));
-            println!("    mode: {}", service_mode(settings, spec));
-            println!();
-            Ok(())
+            if out.is_json() {
+                out.emit(serde_json::json!({
+                    "name": spec.name,
+                    "port": service_port_value(settings, spec),
+                    "mode": service_mode(settings, spec),
+                }))
+            } else {
+                out.blank();
+                out.line(format!("  {}:", spec.display));
+                out.line(format!(
+                    "    port: {}",
+                    service_port_display(settings, spec)
+                ));
+                out.line(format!("    mode: {}", service_mode(settings, spec)));
+                out.blank();
+                Ok(())
+            }
         }
         PortServiceCommand::Set { port } => {
             let p: u16 = port.parse().map_err(|_| {
@@ -164,26 +214,37 @@ async fn port_service(
                 )));
             }
             set_setting(pool, spec.port_key, &p.to_string()).await?;
-            println!(
-                "✅ {} port set to {p} (restart required — run: chatmail reload)",
-                spec.display
-            );
-            Ok(())
+            out.done_msg(
+                format!(
+                    "✅ {} port set to {p} (restart required — run: chatmail reload)",
+                    spec.display
+                ),
+                serde_json::json!({ "name": spec.name, "port": p.to_string() }),
+                format!("{} port set to {p}", spec.name),
+            )
         }
         PortServiceCommand::Reset => {
             delete_setting(pool, spec.port_key).await?;
-            println!(
-                "✅ {} port reset to config/default (restart required — run: chatmail reload)",
-                spec.display
-            );
-            Ok(())
+            out.done_msg(
+                format!(
+                    "✅ {} port reset to config/default (restart required — run: chatmail reload)",
+                    spec.display
+                ),
+                serde_json::json!({ "name": spec.name, "reset": true }),
+                format!("{} port reset", spec.name),
+            )
         }
-        PortServiceCommand::Local => set_mode(pool, spec, "local").await,
-        PortServiceCommand::Public => set_mode(pool, spec, "public").await,
+        PortServiceCommand::Local => set_mode(out, pool, spec, "local").await,
+        PortServiceCommand::Public => set_mode(out, pool, spec, "public").await,
     }
 }
 
-async fn set_mode(pool: &chatmail_db::DbPool, spec: &PortSpec, mode: &str) -> Result<()> {
+async fn set_mode(
+    out: CtlOut,
+    pool: &chatmail_db::DbPool,
+    spec: &PortSpec,
+    mode: &str,
+) -> Result<()> {
     if spec.local_keys.is_empty() {
         return Err(ChatmailError::config(format!(
             "{} does not support local/public mode",
@@ -203,14 +264,25 @@ async fn set_mode(pool: &chatmail_db::DbPool, spec: &PortSpec, mode: &str) -> Re
         }
         _ => return Err(ChatmailError::config(format!("unsupported mode: {mode}"))),
     }
-    println!(
-        "✅ {} set to {mode} (restart required — run: chatmail reload)",
-        spec.display
-    );
-    Ok(())
+    out.done_msg(
+        format!(
+            "✅ {} set to {mode} (restart required — run: chatmail reload)",
+            spec.display
+        ),
+        serde_json::json!({ "name": spec.name, "mode": mode }),
+        format!("{} set to {mode}", spec.name),
+    )
 }
 
-fn service_port(settings: &HashMap<String, String>, spec: &PortSpec) -> String {
+fn service_port_value(settings: &HashMap<String, String>, spec: &PortSpec) -> String {
+    settings
+        .get(spec.port_key)
+        .filter(|s| !s.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| spec.default_port.to_string())
+}
+
+fn service_port_display(settings: &HashMap<String, String>, spec: &PortSpec) -> String {
     if let Some(v) = settings.get(spec.port_key).filter(|s| !s.trim().is_empty()) {
         format!("{v} (override)")
     } else {

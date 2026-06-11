@@ -28,6 +28,7 @@ use chatmail_types::{ChatmailError, Result};
 use getrandom::fill;
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 type TokenRow = (
     String,
@@ -50,6 +51,7 @@ pub async fn registration_tokens(args: &Args, cmd: &RegistrationTokensCommand) -
             expires,
         } => {
             create_token(
+                args,
                 &pool,
                 token.as_deref(),
                 *max_uses,
@@ -58,19 +60,21 @@ pub async fn registration_tokens(args: &Args, cmd: &RegistrationTokensCommand) -
             )
             .await
         }
-        RegistrationTokensCommand::List => list_tokens(&pool).await,
-        RegistrationTokensCommand::Status { token } => status_token(&pool, token).await,
-        RegistrationTokensCommand::Delete { token } => delete_token(&pool, token).await,
+        RegistrationTokensCommand::List => list_tokens(args, &pool).await,
+        RegistrationTokensCommand::Status { token } => status_token(args, &pool, token).await,
+        RegistrationTokensCommand::Delete { token } => delete_token(args, &pool, token).await,
     }
 }
 
 async fn create_token(
+    args: &Args,
     pool: &DbPool,
     token: Option<&str>,
     max_uses: i32,
     comment: &str,
     expires: Option<&str>,
 ) -> Result<()> {
+    let out = CtlOut::from_args(args, "registration-tokens create");
     let mut token = token.map(str::trim).unwrap_or("").to_string();
     if token.is_empty() {
         token = generate_token_string()?;
@@ -91,6 +95,18 @@ async fn create_token(
         expires_at.as_deref()
     )?;
 
+    if args.json {
+        return out.done_msg(
+            "",
+            serde_json::json!({
+                "token": token,
+                "max_uses": max_uses,
+                "comment": comment,
+                "expires_at": expires_at,
+            }),
+            "Registration token created",
+        );
+    }
     if io::stdout().is_terminal() {
         println!();
         println!("  Token:      {token}");
@@ -109,7 +125,8 @@ async fn create_token(
     Ok(())
 }
 
-async fn list_tokens(pool: &DbPool) -> Result<()> {
+async fn list_tokens(args: &Args, pool: &DbPool) -> Result<()> {
+    let out = CtlOut::from_args(args, "registration-tokens list");
     let rows: Vec<TokenRow> = db_fetch_all!(
         pool,
         TokenRow,
@@ -117,18 +134,48 @@ async fn list_tokens(pool: &DbPool) -> Result<()> {
          FROM registration_tokens ORDER BY created_at DESC"
     )?;
 
+    let now = SystemTime::now();
+    if out.is_json() {
+        let mut tokens = Vec::new();
+        for (token, max_uses, used_count, comment, expires_at, created_at) in rows {
+            let pending: i64 = db_fetch_scalar!(
+                pool,
+                i64,
+                "SELECT COUNT(*) FROM quotas WHERE used_token = ? AND first_login_at = 1",
+                token.as_str()
+            )?;
+            let status = token_status(
+                max_uses,
+                used_count,
+                pending as i32,
+                expires_at.as_deref(),
+                now,
+            );
+            tokens.push(serde_json::json!({
+                "token": token,
+                "max_uses": max_uses,
+                "used_count": used_count,
+                "pending": pending,
+                "status": status,
+                "comment": comment,
+                "expires_at": expires_at,
+                "created_at": created_at,
+            }));
+        }
+        return out.emit(serde_json::json!({ "tokens": tokens }));
+    }
+
     if rows.is_empty() {
-        println!("No registration tokens found.");
+        out.line("No registration tokens found.");
         return Ok(());
     }
 
-    let now = SystemTime::now();
-    println!();
-    println!(
+    out.blank();
+    out.line(format!(
         "{:<28} {:<8} {:<10} {:<10} {:<10} COMMENT",
         "TOKEN", "MAX", "CONSUMED", "PENDING", "STATUS"
-    );
-    println!("{}", "-".repeat(90));
+    ));
+    out.line("-".repeat(90));
 
     for (token, max_uses, used_count, comment, expires_at, _created_at) in rows {
         let pending: i64 = db_fetch_scalar!(
@@ -146,7 +193,7 @@ async fn list_tokens(pool: &DbPool) -> Result<()> {
         );
         let comment = comment.unwrap_or_default();
         let comment = truncate_str(&comment, 20);
-        println!(
+        out.line(format!(
             "{:<28} {:<8} {:<10} {:<10} {:<10} {}",
             truncate_str(&token, 28),
             max_uses,
@@ -154,13 +201,14 @@ async fn list_tokens(pool: &DbPool) -> Result<()> {
             pending,
             status,
             comment
-        );
+        ));
     }
-    println!();
+    out.blank();
     Ok(())
 }
 
-async fn status_token(pool: &DbPool, token: &str) -> Result<()> {
+async fn status_token(args: &Args, pool: &DbPool, token: &str) -> Result<()> {
+    let out = CtlOut::from_args(args, "registration-tokens status");
     let t: TokenRow = db_fetch_optional!(
         pool,
         TokenRow,
@@ -189,34 +237,6 @@ async fn status_token(pool: &DbPool, token: &str) -> Result<()> {
     );
     let available = i64::from(max_uses) - i64::from(used_count) - pending;
 
-    println!();
-    println!("  Token:      {token_s}");
-    println!("  Status:     {status}");
-    println!("  Max Uses:   {max_uses}");
-    println!("  Consumed:   {used_count} (confirmed first logins)");
-    println!("  Pending:    {pending} (reserved, awaiting first login)");
-    println!("  Available:  {available}");
-    if let Some(ref c) = comment {
-        if !c.is_empty() {
-            println!("  Comment:    {c}");
-        }
-    }
-    if let Some(ref created) = created_at {
-        println!("  Created At: {created}");
-    }
-    if let Some(ref exp) = expires_at {
-        println!("  Expires At: {exp}");
-        if let Some(exp_t) = parse_sqlite_timestamp(exp) {
-            if exp_t > now {
-                let left = exp_t.duration_since(now).unwrap_or_default();
-                println!("  Expires In: {}m", left.as_secs() / 60);
-            } else {
-                let ago = now.duration_since(exp_t).unwrap_or_default();
-                println!("  Expired:    {}m ago", ago.as_secs() / 60);
-            }
-        }
-    }
-
     let quotas: Vec<(String, i64)> = db_fetch_all!(
         pool,
         (String, i64),
@@ -224,22 +244,79 @@ async fn status_token(pool: &DbPool, token: &str) -> Result<()> {
         token_s.as_str()
     )?;
 
+    if out.is_json() {
+        let pending_accounts: Vec<_> = quotas
+            .iter()
+            .map(|(username, first_login_at)| {
+                serde_json::json!({
+                    "username": username,
+                    "status": if *first_login_at > 1 { "consumed" } else { "awaiting first login" },
+                })
+            })
+            .collect();
+        return out.emit(serde_json::json!({
+            "token": token_s,
+            "status": status,
+            "max_uses": max_uses,
+            "used_count": used_count,
+            "pending": pending,
+            "available": available,
+            "comment": comment,
+            "expires_at": expires_at,
+            "created_at": created_at,
+            "pending_accounts": pending_accounts,
+        }));
+    }
+
+    out.blank();
+    out.line(format!("  Token:      {token_s}"));
+    out.line(format!("  Status:     {status}"));
+    out.line(format!("  Max Uses:   {max_uses}"));
+    out.line(format!(
+        "  Consumed:   {used_count} (confirmed first logins)"
+    ));
+    out.line(format!(
+        "  Pending:    {pending} (reserved, awaiting first login)"
+    ));
+    out.line(format!("  Available:  {available}"));
+    if let Some(ref c) = comment {
+        if !c.is_empty() {
+            out.line(format!("  Comment:    {c}"));
+        }
+    }
+    if let Some(ref created) = created_at {
+        out.line(format!("  Created At: {created}"));
+    }
+    if let Some(ref exp) = expires_at {
+        out.line(format!("  Expires At: {exp}"));
+        if let Some(exp_t) = parse_sqlite_timestamp(exp) {
+            if exp_t > now {
+                let left = exp_t.duration_since(now).unwrap_or_default();
+                out.line(format!("  Expires In: {}m", left.as_secs() / 60));
+            } else {
+                let ago = now.duration_since(exp_t).unwrap_or_default();
+                out.line(format!("  Expired:    {}m ago", ago.as_secs() / 60));
+            }
+        }
+    }
+
     if !quotas.is_empty() {
-        println!("\n  Pending Accounts ({}):", quotas.len());
+        out.line(format!("\n  Pending Accounts ({}):", quotas.len()));
         for (username, first_login_at) in quotas {
             let login_status = if first_login_at > 1 {
                 "consumed"
             } else {
                 "awaiting first login"
             };
-            println!("    - {username} ({login_status})");
+            out.line(format!("    - {username} ({login_status})"));
         }
     }
-    println!();
+    out.blank();
     Ok(())
 }
 
-async fn delete_token(pool: &DbPool, token: &str) -> Result<()> {
+async fn delete_token(args: &Args, pool: &DbPool, token: &str) -> Result<()> {
+    let out = CtlOut::from_args(args, "registration-tokens delete");
     let affected = match pool {
         DbPool::Sqlite(p) => sqlx::query("DELETE FROM registration_tokens WHERE token = ?")
             .bind(token)
@@ -257,8 +334,11 @@ async fn delete_token(pool: &DbPool, token: &str) -> Result<()> {
     if affected == 0 {
         return Err(ChatmailError::config(format!("token not found: {token}")));
     }
-    println!("Deleted token: {token}");
-    Ok(())
+    out.done_msg(
+        format!("Deleted token: {token}"),
+        serde_json::json!({ "token": token }),
+        format!("Deleted token: {token}"),
+    )
 }
 
 fn token_status(

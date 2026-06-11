@@ -23,6 +23,7 @@ use chatmail_db::{delete_setting, get_setting, set_setting, settings_keys};
 use chatmail_types::{ChatmailError, Result};
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 const VALID: &[(&str, &str)] = &[
     ("en", "English"),
@@ -47,14 +48,30 @@ pub async fn language(args: &Args, cmd: Option<&LanguageCommand>) -> Result<()> 
     let pool = ctx.open_pool().await?;
 
     match cmd {
-        None | Some(LanguageCommand::Status) => status(&ctx, &pool).await,
-        Some(LanguageCommand::Set { lang }) => set_lang(&pool, lang).await,
-        Some(LanguageCommand::Reset) => reset(&pool).await,
+        None | Some(LanguageCommand::Status) => status(args, &ctx, &pool).await,
+        Some(LanguageCommand::Set { lang }) => set_lang(args, &pool, lang).await,
+        Some(LanguageCommand::Reset) => reset(args, &pool).await,
     }
 }
 
-async fn status(ctx: &CtlContext, pool: &chatmail_db::DbPool) -> Result<()> {
-    let display = if let Some(v) = get_setting(pool, settings_keys::LANGUAGE).await? {
+async fn status(args: &Args, ctx: &CtlContext, pool: &chatmail_db::DbPool) -> Result<()> {
+    let out = CtlOut::from_args(args, "language status");
+    let db_lang = get_setting(pool, settings_keys::LANGUAGE).await?;
+    let config_default = ctx.config.language.as_deref().unwrap_or("en").to_string();
+
+    if out.is_json() {
+        let (current, source) = match db_lang.as_deref() {
+            Some(v) if !v.is_empty() => (v.to_string(), "db"),
+            _ => (config_default.clone(), "config"),
+        };
+        return out.emit(serde_json::json!({
+            "current": current,
+            "config_default": config_default,
+            "source": source,
+        }));
+    }
+
+    let display = if let Some(v) = db_lang {
         if !v.is_empty() {
             format!("{} — {} (DB override)", v, language_name(&v))
         } else {
@@ -64,36 +81,39 @@ async fn status(ctx: &CtlContext, pool: &chatmail_db::DbPool) -> Result<()> {
         "(config default)".into()
     };
 
-    let config_default = ctx
-        .config
-        .language
-        .as_deref()
-        .map(|l| format!("{l} — {}", language_name(l)))
-        .unwrap_or_else(|| "en".into());
+    let config_display = format!("{} — {}", config_default, language_name(&config_default));
 
-    println!();
-    println!("  Website language:  {display}");
+    out.blank();
+    out.line(format!("  Website language:  {display}"));
     if display.contains("config default") {
-        println!("  Config default:    {config_default}");
+        out.line(format!("  Config default:    {config_display}"));
     }
-    println!();
+    out.blank();
     Ok(())
 }
 
-async fn set_lang(pool: &chatmail_db::DbPool, lang: &str) -> Result<()> {
+async fn set_lang(args: &Args, pool: &chatmail_db::DbPool, lang: &str) -> Result<()> {
+    let out = CtlOut::from_args(args, "language set");
     let lang = validate_language_code(lang)?;
     set_setting(pool, settings_keys::LANGUAGE, &lang).await?;
-    println!(
-        "🌐 Website language set to {lang} — {} (effective immediately)",
-        language_name(&lang)
-    );
-    Ok(())
+    out.done_msg(
+        format!(
+            "🌐 Website language set to {lang} — {} (effective immediately)",
+            language_name(&lang)
+        ),
+        serde_json::json!({ "language": lang }),
+        format!("Website language set to {lang}"),
+    )
 }
 
-async fn reset(pool: &chatmail_db::DbPool) -> Result<()> {
+async fn reset(args: &Args, pool: &chatmail_db::DbPool) -> Result<()> {
+    let out = CtlOut::from_args(args, "language reset");
     delete_setting(pool, settings_keys::LANGUAGE).await?;
-    println!("🔄 Website language reset to config default (effective immediately)");
-    Ok(())
+    out.done_msg(
+        "🔄 Website language reset to config default (effective immediately)",
+        serde_json::json!({ "reset": true }),
+        "Website language reset to config default",
+    )
 }
 
 fn language_name(code: &str) -> &'static str {

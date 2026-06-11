@@ -28,6 +28,7 @@ use chatmail_config::UninstallArgs;
 use chatmail_types::{ChatmailError, Result};
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 use super::util;
 
 const DEFAULT_BINARY_NAME: &str = "madmail";
@@ -41,7 +42,6 @@ const SYSTEMD_UNIT_DIRS: &[&str] = &[
 #[derive(Debug, Default)]
 struct UninstallPlan {
     installation_found: bool,
-    #[allow(dead_code)]
     primary_binary_name: String,
     /// systemd unit basenames (without `.service`), e.g. `madmail`, `madmail-new`.
     service_names: Vec<String>,
@@ -75,8 +75,12 @@ pub async fn uninstall(args: &Args, flags: &UninstallArgs) -> Result<()> {
     let plan = detect_installation(&ctx, &primary)?;
 
     if !plan.installation_found {
-        println!("❌ No madmail/chatmail installation detected");
-        println!("Nothing to uninstall.");
+        if args.json {
+            CtlOut::from_args(args, "uninstall").emit(serde_json::json!({ "found": false }))?;
+        } else {
+            println!("❌ No madmail/chatmail installation detected");
+            println!("Nothing to uninstall.");
+        }
         return Ok(());
     }
 
@@ -89,7 +93,11 @@ pub async fn uninstall(args: &Args, flags: &UninstallArgs) -> Result<()> {
             false,
         )?
     {
-        println!("Uninstallation cancelled.");
+        if args.json {
+            CtlOut::from_args(args, "uninstall").aborted()?;
+        } else {
+            println!("Uninstallation cancelled.");
+        }
         return Ok(());
     }
 
@@ -123,9 +131,22 @@ pub async fn uninstall(args: &Args, flags: &UninstallArgs) -> Result<()> {
     }
 
     daemon_reload(flags.dry_run)?;
-    println!("\n🎉 Uninstallation completed successfully!");
-    if !flags.keep_data {
-        println!("⚠️  All mail data has been permanently deleted.");
+    if args.json {
+        CtlOut::from_args(args, "uninstall").done_msg(
+            "",
+            serde_json::json!({
+                "uninstalled": true,
+                "binary": plan.primary_binary_name,
+                "dry_run": flags.dry_run,
+                "keep_data": flags.keep_data,
+            }),
+            "Uninstallation completed successfully",
+        )?;
+    } else {
+        println!("\n🎉 Uninstallation completed successfully!");
+        if !flags.keep_data {
+            println!("⚠️  All mail data has been permanently deleted.");
+        }
     }
     Ok(())
 }
@@ -361,6 +382,7 @@ fn push_unique_string(vec: &mut Vec<String>, s: String) {
 fn show_plan(plan: &UninstallPlan, flags: &UninstallArgs) {
     println!("\n📋 Uninstallation Plan");
     println!("======================");
+    println!("Binary: {}", plan.primary_binary_name);
     if !plan.service_names.is_empty() {
         println!("Services: {}", plan.service_names.join(", "));
     }

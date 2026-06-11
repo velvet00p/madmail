@@ -25,6 +25,7 @@ use chatmail_tasks::{
 use chatmail_types::{ChatmailError, Result};
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 use crate::supervisor::renew_autocert_from_cli;
 
 pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
@@ -38,20 +39,38 @@ pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
         mailbox: &mailbox,
         maintenance: &maintenance,
     };
+    let out = CtlOut::from_args(args, "tasks");
 
     match cmd {
         TasksCommand::List => {
-            println!("Maintenance jobs (also run on a schedule when `chatmail run` is active):\n");
+            let mut jobs = Vec::new();
+            if out.is_json() {
+                for id in TaskId::ALL {
+                    let enabled = task_enabled(*id, &maintenance, &ctx);
+                    jobs.push(serde_json::json!({
+                        "name": id.name(),
+                        "description": id.description(),
+                        "enabled": enabled,
+                    }));
+                }
+                return out.emit(serde_json::json!({
+                    "tasks": jobs,
+                    "message_retention": maintenance.message_retention.map(|r| format!("{r:?}")),
+                    "unused_account_retention": maintenance.unused_account_retention.map(|r| format!("{r:?}")),
+                    "periodic_jobs_enabled": maintenance.periodic_jobs_enabled(),
+                }));
+            }
+            out.line("Maintenance jobs (also run on a schedule when `chatmail run` is active):\n");
             for id in TaskId::ALL {
                 let enabled = match id {
                     TaskId::PruneOldMessages => maintenance.message_retention.is_some(),
                     TaskId::PruneUnusedAccounts => maintenance.unused_account_retention.is_some(),
                     TaskId::PurgeSeenMessages => {
-                        println!(
+                        out.line(format!(
                             "  {} — {} (in-process every 15s when __AUTO_PURGE_SEEN__=enabled)",
                             id.name(),
                             id.description()
-                        );
+                        ));
                         continue;
                     }
                     TaskId::PruneUnreadOlder => false,
@@ -64,21 +83,26 @@ pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
                     _ if enabled => " [enabled — DB or maddy.conf]",
                     _ => "",
                 };
-                println!("  {} — {}{}", id.name(), id.description(), cfg_note);
+                out.line(format!(
+                    "  {} — {}{}",
+                    id.name(),
+                    id.description(),
+                    cfg_note
+                ));
             }
-            println!();
+            out.blank();
             if let Some(r) = maintenance.message_retention {
-                println!("message file retention: {:?}", r);
+                out.line(format!("message file retention: {:?}", r));
             }
             if let Some(r) = maintenance.unused_account_retention {
-                println!("storage.imapsql unused_account_retention: {:?}", r);
+                out.line(format!("storage.imapsql unused_account_retention: {:?}", r));
             }
             if !maintenance.periodic_jobs_enabled() {
-                println!(
-                    "No periodic retention jobs — enable message retention in admin UI or set retention / unused_account_retention in maddy.conf"
+                out.line(
+                    "No periodic retention jobs — enable message retention in admin UI or set retention / unused_account_retention in maddy.conf",
                 );
             } else {
-                println!("Periodic retention interval when server is running: 1h (Madmail parity)");
+                out.line("Periodic retention interval when server is running: 1h (Madmail parity)");
             }
         }
         TasksCommand::Run { task, retention } => {
@@ -91,25 +115,44 @@ pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
             };
             if id == TaskId::RenewCertificate {
                 let outcome = renew_autocert_from_cli(&ctx.config, &ctx.state_dir).await?;
+                if out.is_json() {
+                    return out.emit(serde_json::json!({
+                        "task": id.name(),
+                        "skipped": outcome.skipped,
+                        "renewed": outcome.renewed,
+                        "detail": outcome.detail,
+                    }));
+                }
                 if outcome.skipped {
-                    println!(
+                    out.line(format!(
                         "renew-certificate: skipped ({})",
                         outcome.detail.unwrap_or_default()
-                    );
+                    ));
                 } else if outcome.renewed {
-                    println!("renew-certificate: {}", outcome.detail.unwrap_or_default());
+                    out.line(format!(
+                        "renew-certificate: {}",
+                        outcome.detail.unwrap_or_default()
+                    ));
                 }
                 return Ok(());
             }
             let outcome = run_task(&task_ctx, id, retention_override).await?;
+            if out.is_json() {
+                return out.emit(serde_json::json!({
+                    "task": id.name(),
+                    "skipped": outcome.skipped,
+                    "deleted": outcome.deleted,
+                    "detail": outcome.detail,
+                }));
+            }
             if outcome.skipped {
-                println!(
+                out.line(format!(
                     "{}: skipped ({})",
                     id.name(),
                     outcome.detail.unwrap_or_default()
-                );
+                ));
             } else {
-                println!(
+                out.line(format!(
                     "{}: deleted {} item(s){}",
                     id.name(),
                     outcome.deleted,
@@ -117,30 +160,55 @@ pub async fn tasks(args: &Args, cmd: &TasksCommand) -> Result<()> {
                         .detail
                         .map(|d| format!(" ({d})"))
                         .unwrap_or_default()
-                );
+                ));
             }
         }
         TasksCommand::RunAll => {
             let report = run_all_configured(&task_ctx).await?;
+            if out.is_json() {
+                let outcomes: Vec<_> = report
+                    .outcomes
+                    .into_iter()
+                    .map(|o| {
+                        serde_json::json!({
+                            "task": o.task.name(),
+                            "skipped": o.skipped,
+                            "deleted": o.deleted,
+                            "detail": o.detail,
+                        })
+                    })
+                    .collect();
+                return out.emit(serde_json::json!({ "outcomes": outcomes }));
+            }
             if report.outcomes.is_empty() {
-                println!("No jobs enabled in config (set storage.imapsql retention directives).");
+                out.line("No jobs enabled in config (set storage.imapsql retention directives).");
             }
             for outcome in report.outcomes {
                 if outcome.skipped {
-                    println!(
+                    out.line(format!(
                         "{}: skipped ({})",
                         outcome.task.name(),
                         outcome.detail.unwrap_or_default()
-                    );
+                    ));
                 } else {
-                    println!(
+                    out.line(format!(
                         "{}: deleted {} item(s)",
                         outcome.task.name(),
                         outcome.deleted
-                    );
+                    ));
                 }
             }
         }
     }
     Ok(())
+}
+
+fn task_enabled(id: TaskId, maintenance: &MaintenanceConfig, ctx: &CtlContext) -> bool {
+    match id {
+        TaskId::PruneOldMessages => maintenance.message_retention.is_some(),
+        TaskId::PruneUnusedAccounts => maintenance.unused_account_retention.is_some(),
+        TaskId::PurgeSeenMessages => false,
+        TaskId::PruneUnreadOlder => false,
+        TaskId::RenewCertificate => ctx.config.tls_mode.as_deref() == Some("autocert"),
+    }
 }

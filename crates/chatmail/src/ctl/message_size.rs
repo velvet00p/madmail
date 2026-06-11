@@ -23,78 +23,106 @@ use chatmail_db::{delete_setting, get_setting, set_setting, settings_keys};
 use chatmail_types::Result;
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 pub async fn message_size(args: &Args, cmd: Option<&MessageSizeCommand>) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let pool = ctx.open_pool().await?;
 
     match cmd {
-        None | Some(MessageSizeCommand::Status) => status(&ctx, &pool).await,
-        Some(MessageSizeCommand::Set { size }) => set_size(&ctx, &pool, size).await,
-        Some(MessageSizeCommand::Reset) => reset(&pool, &ctx.config).await,
+        None | Some(MessageSizeCommand::Status) => status(args, &ctx, &pool).await,
+        Some(MessageSizeCommand::Set { size }) => set_size(args, &ctx, &pool, size).await,
+        Some(MessageSizeCommand::Reset) => reset(args, &pool, &ctx.config).await,
     }
 }
 
-async fn status(ctx: &CtlContext, pool: &chatmail_db::DbPool) -> Result<()> {
+async fn status(args: &Args, ctx: &CtlContext, pool: &chatmail_db::DbPool) -> Result<()> {
+    let out = CtlOut::from_args(args, "message-size status");
     let append = get_setting(pool, settings_keys::APPENDLIMIT).await?;
     let max = get_setting(pool, settings_keys::MAX_MESSAGE_SIZE).await?;
     let config_eff = chatmail_config::effective_max_message_bytes(&ctx.config);
     let effective =
         chatmail_config::resolve_max_message_bytes(config_eff, append.as_deref(), max.as_deref())?;
 
-    println!();
-    println!(
+    if out.is_json() {
+        let source = if append.is_some() || max.is_some() {
+            "db"
+        } else {
+            "config"
+        };
+        return out.emit(serde_json::json!({
+            "appendlimit": append,
+            "max_message_size": max,
+            "effective_bytes": effective,
+            "source": source,
+        }));
+    }
+
+    out.blank();
+    out.line(format!(
         "  Effective limit:   {} ({} bytes)",
         format_data_size(effective),
         effective
-    );
-    println!(
+    ));
+    out.line(format!(
         "  Config file:       {} ({} bytes)",
         format_data_size(config_eff),
         config_eff
-    );
+    ));
     match (&append, &max) {
         (Some(a), Some(b)) if a == b => {
-            println!("  DB override:       {a}");
+            out.line(format!("  DB override:       {a}"));
         }
         (Some(a), Some(b)) => {
-            println!("  DB appendlimit:    {a}");
-            println!("  DB max_message_size: {b}");
+            out.line(format!("  DB appendlimit:    {a}"));
+            out.line(format!("  DB max_message_size: {b}"));
         }
-        (Some(a), None) => println!("  DB appendlimit:    {a}"),
-        (None, Some(b)) => println!("  DB max_message_size: {b}"),
-        (None, None) => println!("  DB override:       (none — using config / default)"),
+        (Some(a), None) => out.line(format!("  DB appendlimit:    {a}")),
+        (None, Some(b)) => out.line(format!("  DB max_message_size: {b}")),
+        (None, None) => out.line("  DB override:       (none — using config / default)"),
     }
-    println!();
-    println!("  Apply to a running server: chatmail reload");
-    println!();
+    out.blank();
+    out.line("  Apply to a running server: chatmail reload");
+    out.blank();
     Ok(())
 }
 
-async fn set_size(ctx: &CtlContext, pool: &chatmail_db::DbPool, size: &str) -> Result<()> {
+async fn set_size(
+    args: &Args,
+    ctx: &CtlContext,
+    pool: &chatmail_db::DbPool,
+    size: &str,
+) -> Result<()> {
+    let out = CtlOut::from_args(args, "message-size set");
     let size = size.trim();
     parse_data_size(size)?;
     set_setting(pool, settings_keys::APPENDLIMIT, size).await?;
     set_setting(pool, settings_keys::MAX_MESSAGE_SIZE, size).await?;
     let config_eff = chatmail_config::effective_max_message_bytes(&ctx.config);
     let effective = chatmail_config::resolve_max_message_bytes(config_eff, Some(size), Some(size))?;
-    println!(
-        "📦 Message size limit set to {size} (effective {} bytes)",
-        effective
-    );
-    println!("   Run `chatmail reload` if the server is already running.");
-    Ok(())
+    out.done_msg(
+        format!("📦 Message size limit set to {size} (effective {effective} bytes)"),
+        serde_json::json!({
+            "appendlimit": size,
+            "max_message_size": size,
+            "effective_bytes": effective,
+        }),
+        format!("Message size limit set to {size}"),
+    )
 }
 
-async fn reset(pool: &chatmail_db::DbPool, config: &AppConfig) -> Result<()> {
+async fn reset(args: &Args, pool: &chatmail_db::DbPool, config: &AppConfig) -> Result<()> {
+    let out = CtlOut::from_args(args, "message-size reset");
     delete_setting(pool, settings_keys::APPENDLIMIT).await?;
     delete_setting(pool, settings_keys::MAX_MESSAGE_SIZE).await?;
     let effective = chatmail_config::effective_max_message_bytes(config);
-    println!(
-        "🔄 Message size DB overrides cleared (effective {} — {})",
-        format_data_size(effective),
-        effective
-    );
-    println!("   Run `chatmail reload` if the server is already running.");
-    Ok(())
+    out.done_msg(
+        format!(
+            "🔄 Message size DB overrides cleared (effective {} — {})",
+            format_data_size(effective),
+            effective
+        ),
+        serde_json::json!({ "effective_bytes": effective, "source": "config" }),
+        "Message size DB overrides cleared",
+    )
 }

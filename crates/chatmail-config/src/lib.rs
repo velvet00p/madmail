@@ -38,9 +38,9 @@ use std::path::PathBuf;
 
 pub use autoconfig::{build_autoconfig_xml, AutoconfigParams};
 pub use cli::{
-    AdminWebCommand, Args, Cli, Command, EndpointCacheCommand, FederationCommand, LanguageCommand,
-    PortCommand, PortServiceCommand, PushCommand, RegistrationCommand, RegistrationTokensCommand,
-    ServiceToggleCommand, SharingCommand, TasksCommand, UninstallArgs,
+    AdminWebCommand, Args, Cli, Command, CompletionShell, EndpointCacheCommand, FederationCommand,
+    LanguageCommand, PortCommand, PortServiceCommand, PushCommand, RegistrationCommand,
+    RegistrationTokensCommand, ServiceToggleCommand, SharingCommand, TasksCommand, UninstallArgs,
 };
 pub use client_mail::{
     build_dclogin_link, client_connect_host, effective_http_listen, effective_http_plain_listen,

@@ -49,10 +49,10 @@ pub enum Command {
         #[arg(value_name = "PATH_OR_URL")]
         path_or_url: String,
     },
-    /// Download and install update from URL (alias for `upgrade`).
+    /// Replace this executable from a signed local file or URL (alias for `upgrade`).
     Update {
-        /// Path to signed binary, or `http://` / `https://` URL (same as `upgrade`).
-        #[arg(value_name = "URL")]
+        /// Path to signed binary, or `http://` / `https://` URL to download one.
+        #[arg(value_name = "PATH_OR_URL")]
         path_or_url: String,
     },
     /// Display the admin API credentials.
@@ -205,6 +205,26 @@ pub enum Command {
     /// Delta Chat push notifications (`auto` / `on` / `off`).
     #[command(subcommand)]
     Push(PushCommand),
+    /// Print shell tab-completion scripts (`bash`, `zsh`, `fish`).
+    #[command(subcommand)]
+    Completion(CompletionShell),
+    /// Emit roff man page for the CLI (Madmail hidden helper).
+    #[command(name = "generate-man", hide = true)]
+    GenerateMan,
+    /// Emit fish completion script (Madmail hidden helper).
+    #[command(name = "generate-fish-completion", hide = true)]
+    GenerateFishCompletion,
+}
+
+/// `madmail completion` — shell tab completion (clap_complete).
+#[derive(Debug, Subcommand, Clone)]
+pub enum CompletionShell {
+    /// Bash completion script for `/usr/share/bash-completion/completions/<binary>`.
+    Bash,
+    /// Zsh completion script for `/usr/share/zsh/site-functions/_<binary>`.
+    Zsh,
+    /// Fish completion script for `/usr/share/fish/vendor_completions.d/<binary>.fish`.
+    Fish,
 }
 
 /// `madmail push` — `__PUSH_MODE__` (`auto` disables after repeated proxy failures).
@@ -626,6 +646,10 @@ pub struct Args {
     /// Initialize and exit (used by integration tests; skips signal wait).
     #[arg(long, default_value_t = false, hide = true, global = true)]
     pub boot_once: bool,
+
+    /// Emit machine-readable JSON on stdout (no decorative text or QR codes).
+    #[arg(long, global = true)]
+    pub json: bool,
 }
 
 impl Cli {
@@ -779,7 +803,8 @@ mod tests {
 
     #[test]
     fn default_install_subcommand_flags_are_unset() {
-        let cli = Cli::try_parse_from(["madmail", "install", "--simple", "--ip", "1.2.3.4"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["madmail", "install", "--simple", "--ip", "1.2.3.4"]).unwrap();
         let Some(Command::Install(args)) = cli.command else {
             panic!("expected install subcommand");
         };

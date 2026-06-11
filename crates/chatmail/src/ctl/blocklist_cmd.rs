@@ -21,44 +21,74 @@ use chatmail_config::cli::BlocklistCommand;
 use chatmail_config::Args;
 use chatmail_db::{blocklist, DbPool, MANUAL_BLOCK_REASON};
 use chatmail_types::{ChatmailError, Result};
+use serde::Serialize;
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 use super::util::confirm;
+
+#[derive(Serialize)]
+struct BanListEntry {
+    username: String,
+    reason: String,
+    blocked_at: String,
+}
 
 pub async fn blocklist(args: &Args, cmd: &BlocklistCommand) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let pool = ctx.open_pool().await?;
 
     match cmd {
-        BlocklistCommand::List => print_ban_list(&pool).await,
+        BlocklistCommand::List => {
+            let out = CtlOut::from_args(args, "blocklist list");
+            print_ban_list(&pool, &out).await
+        }
         BlocklistCommand::Add { username, reason } => {
+            let out = CtlOut::from_args(args, "blocklist add");
             let u = normalize_blocklist_username(username)?;
             let r = reason.as_deref().unwrap_or(MANUAL_BLOCK_REASON);
             blocklist::block_user(&pool, &u, r).await?;
-            println!("Blocked: {u} ({r})");
-            Ok(())
+            out.done_msg(
+                format!("Blocked: {u} ({r})"),
+                serde_json::json!({ "username": u, "reason": r }),
+                format!("Blocked: {u} ({r})"),
+            )
         }
         BlocklistCommand::Remove { username, yes } => {
+            let out = CtlOut::from_args(args, "blocklist remove");
             let u = normalize_blocklist_username(username)?;
             if !confirm(&format!("Unblock {u}?"), *yes)? {
-                println!("Aborted.");
-                return Ok(());
+                return out.aborted();
             }
             blocklist::unblock_user(&pool, &u).await?;
-            println!("Unblocked: {u}");
-            Ok(())
+            out.done_msg(
+                format!("Unblocked: {u}"),
+                serde_json::json!({ "username": u }),
+                format!("Unblocked: {u}"),
+            )
         }
     }
 }
 
-pub async fn print_ban_list(pool: &DbPool) -> Result<()> {
+pub async fn print_ban_list(pool: &DbPool, out: &CtlOut) -> Result<()> {
     let rows = blocklist::list_blocked_users(pool).await?;
+    if out.is_json() {
+        let entries: Vec<BanListEntry> = rows
+            .into_iter()
+            .map(|(username, reason, blocked_at)| BanListEntry {
+                username,
+                reason,
+                blocked_at,
+            })
+            .collect();
+        return out.emit(serde_json::json!({ "entries": entries }));
+    }
     if rows.is_empty() {
-        println!("(no blocked users)");
+        out.line("(no blocked users)");
         return Ok(());
     }
     for (username, reason, blocked_at) in rows {
-        println!("{username}\t{reason}\t{blocked_at}");
+        out.line(format!("{username}\t{reason}\t{blocked_at}"));
     }
     Ok(())
 }
@@ -78,6 +108,8 @@ fn normalize_blocklist_username(raw: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chatmail_config::Cli;
+    use clap::Parser;
 
     #[test]
     fn normalize_email_usernames() {
@@ -98,11 +130,11 @@ mod tests {
     #[tokio::test]
     async fn print_ban_list_empty_and_populated() {
         let pool = chatmail_db::init_memory_db().await.unwrap();
-        print_ban_list(&pool).await.unwrap();
+        let out = CtlOut::from_args(&Cli::try_parse_from(["chatmail"]).unwrap().args, "ban-list");
+        print_ban_list(&pool, &out).await.unwrap();
 
         blocklist::block_user(&pool, "a@x.org", "r1").await.unwrap();
         blocklist::block_user(&pool, "b@x.org", "r2").await.unwrap();
-        // does not panic; output goes to stdout in real CLI
-        print_ban_list(&pool).await.unwrap();
+        print_ban_list(&pool, &out).await.unwrap();
     }
 }

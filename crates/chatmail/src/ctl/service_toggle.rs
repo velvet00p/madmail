@@ -23,6 +23,7 @@ use chatmail_db::{get_bool_setting, set_setting, DbPool};
 use chatmail_types::Result;
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 pub async fn run(
     args: &Args,
@@ -32,29 +33,69 @@ pub async fn run(
 ) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let pool = ctx.open_pool().await?;
+    let command = if service_label.contains("WebIMAP") {
+        "webimap"
+    } else {
+        "websmtp"
+    };
 
     match cmd {
-        ServiceToggleCommand::Status => status(&pool, setting_key, service_label).await,
-        ServiceToggleCommand::Enable => set_flag(&pool, setting_key, service_label, true).await,
-        ServiceToggleCommand::Disable => set_flag(&pool, setting_key, service_label, false).await,
+        ServiceToggleCommand::Status => {
+            status(args, command, &pool, setting_key, service_label).await
+        }
+        ServiceToggleCommand::Enable => {
+            set_flag(args, command, &pool, setting_key, service_label, true).await
+        }
+        ServiceToggleCommand::Disable => {
+            set_flag(args, command, &pool, setting_key, service_label, false).await
+        }
     }
 }
 
-async fn status(pool: &DbPool, key: &str, label: &str) -> Result<()> {
+async fn status(
+    args: &Args,
+    command: &'static str,
+    pool: &DbPool,
+    key: &str,
+    label: &str,
+) -> Result<()> {
+    let out = CtlOut::from_args(args, command);
     let on = get_bool_setting(pool, key, false).await?;
-    println!();
-    println!("  {label}: {}", if on { "enabled" } else { "disabled" });
-    println!("  (effective on next HTTP request; no restart required)");
-    println!();
+    if out.is_json() {
+        return out.emit(serde_json::json!({ "enabled": on }));
+    }
+    out.blank();
+    out.line(format!(
+        "  {label}: {}",
+        if on { "enabled" } else { "disabled" }
+    ));
+    out.line("  (effective on next HTTP request; no restart required)");
+    out.blank();
     Ok(())
 }
 
-async fn set_flag(pool: &DbPool, key: &str, label: &str, on: bool) -> Result<()> {
+async fn set_flag(
+    args: &Args,
+    command: &'static str,
+    pool: &DbPool,
+    key: &str,
+    label: &str,
+    on: bool,
+) -> Result<()> {
+    let out = CtlOut::from_args(args, command);
     set_setting(pool, key, if on { "true" } else { "false" }).await?;
-    if on {
-        println!("✅ {label} enabled (effective immediately on next HTTP request)");
+    let msg = if on {
+        format!("{label} enabled")
     } else {
-        println!("🚫 {label} disabled (API returns 404 when disabled)");
-    }
-    Ok(())
+        format!("{label} disabled")
+    };
+    out.done_msg(
+        if on {
+            format!("✅ {label} enabled (effective immediately on next HTTP request)")
+        } else {
+            format!("🚫 {label} disabled (API returns 404 when disabled)")
+        },
+        serde_json::json!({ "enabled": on }),
+        msg,
+    )
 }

@@ -24,6 +24,7 @@ use chatmail_state::{FederationPolicyCache, FederationSilentDismissCache, Federa
 use chatmail_types::{ChatmailError, Result};
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 pub async fn federation(args: &Args, cmd: &FederationCommand) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
@@ -32,6 +33,7 @@ pub async fn federation(args: &Args, cmd: &FederationCommand) -> Result<()> {
     cache.hydrate(&pool).await?;
     let dismiss = FederationSilentDismissCache::new();
     dismiss.hydrate(&pool).await?;
+    let out = CtlOut::from_args(args, "federation");
 
     match cmd {
         FederationCommand::Policy { policy } => {
@@ -40,15 +42,23 @@ pub async fn federation(args: &Args, cmd: &FederationCommand) -> Result<()> {
                 return Err(ChatmailError::config("policy must be 'accept' or 'reject'"));
             }
             set_federation_policy_label(&pool, &p).await?;
-            println!("Success: Global federation policy switched to {p}.");
+            return out.done_msg(
+                format!("Success: Global federation policy switched to {p}."),
+                serde_json::json!({ "policy": p }),
+                format!("Federation policy set to {p}"),
+            );
         }
         FederationCommand::Block { domain } => {
             if domain.trim().is_empty() {
                 return Err(ChatmailError::config("DOMAIN is required"));
             }
             let count = cache.add_rule_count(&pool, domain).await?;
-            println!(
-                "Success: '{domain}' added to rules. Currently blocking {count} total domain(s)."
+            return out.done_msg(
+                format!(
+                    "Success: '{domain}' added to rules. Currently blocking {count} total domain(s)."
+                ),
+                serde_json::json!({ "domain": domain, "action": "block", "total": count }),
+                format!("Added {domain} to federation rules"),
             );
         }
         FederationCommand::Allow { domain } => {
@@ -56,8 +66,12 @@ pub async fn federation(args: &Args, cmd: &FederationCommand) -> Result<()> {
                 return Err(ChatmailError::config("DOMAIN is required"));
             }
             let count = cache.add_rule_count(&pool, domain).await?;
-            println!(
-                "Success: '{domain}' added to rules. Currently trusting {count} total domain(s)."
+            return out.done_msg(
+                format!(
+                    "Success: '{domain}' added to rules. Currently trusting {count} total domain(s)."
+                ),
+                serde_json::json!({ "domain": domain, "action": "allow", "total": count }),
+                format!("Added {domain} to federation rules"),
             );
         }
         FederationCommand::Remove { domain } => {
@@ -65,39 +79,62 @@ pub async fn federation(args: &Args, cmd: &FederationCommand) -> Result<()> {
                 return Err(ChatmailError::config("DOMAIN is required"));
             }
             let remaining = cache.remove_rule_count(&pool, domain).await?;
-            println!("Success: Removed '{domain}' from rules. {remaining} remaining.");
+            return out.done_msg(
+                format!("Success: Removed '{domain}' from rules. {remaining} remaining."),
+                serde_json::json!({ "domain": domain, "remaining": remaining }),
+                format!("Removed {domain} from federation rules"),
+            );
         }
         FederationCommand::Flush => {
             cache.flush_rules(&pool).await?;
-            println!("WARNING: Configuration flushed. 0 custom domains remain in active list.");
+            return out.done_msg(
+                "WARNING: Configuration flushed. 0 custom domains remain in active list.",
+                serde_json::json!({ "flushed": true, "total": 0 }),
+                "Federation rules flushed",
+            );
         }
         FederationCommand::List => {
             let policy = federation_policy_label(&pool).await?;
-            println!("[ FEDERATION STATE ]");
-            println!("Policy:   {policy}\n");
             let rules = cache.list_rules(&pool).await?;
+            let action = rule_action(&policy);
+            if out.is_json() {
+                let rules_json: Vec<_> = rules
+                    .into_iter()
+                    .map(|(domain, _)| serde_json::json!({ "domain": domain, "action": action }))
+                    .collect();
+                return out.emit(serde_json::json!({
+                    "policy": policy,
+                    "rules": rules_json,
+                }));
+            }
+            out.line("[ FEDERATION STATE ]");
+            out.line(format!("Policy:   {policy}\n"));
             if rules.is_empty() {
-                println!("[ ACTIVE RULES ]");
-                println!("No exceptions configured.");
-                println!("---");
-                println!("Total: 0 exceptions.");
+                out.line("[ ACTIVE RULES ]");
+                out.line("No exceptions configured.");
+                out.line("---");
+                out.line("Total: 0 exceptions.");
                 return Ok(());
             }
-            println!("[ ACTIVE RULES ]");
+            out.line("[ ACTIVE RULES ]");
             for (i, (domain, created_at)) in rules.iter().enumerate() {
                 let date = format_created_at(*created_at);
-                println!("{}. {domain}\t(Added: {date})", i + 1);
+                out.line(format!("{}. {domain}\t(Added: {date})", i + 1));
             }
-            println!("---");
-            println!("Total: {} exceptions.", rules.len());
+            out.line("---");
+            out.line(format!("Total: {} exceptions.", rules.len()));
         }
         FederationCommand::Dismiss { domain } => {
             if domain.trim().is_empty() {
                 return Err(ChatmailError::config("DOMAIN is required"));
             }
             let count = dismiss.add_count(&pool, domain).await?;
-            println!(
-                "Success: '{domain}' added to silent dismiss. Currently dismissing {count} domain(s)."
+            return out.done_msg(
+                format!(
+                    "Success: '{domain}' added to silent dismiss. Currently dismissing {count} domain(s)."
+                ),
+                serde_json::json!({ "domain": domain, "total": count }),
+                format!("Added {domain} to silent dismiss"),
             );
         }
         FederationCommand::Undismiss { domain } => {
@@ -105,38 +142,71 @@ pub async fn federation(args: &Args, cmd: &FederationCommand) -> Result<()> {
                 return Err(ChatmailError::config("DOMAIN is required"));
             }
             let remaining = dismiss.remove_count(&pool, domain).await?;
-            println!("Success: Removed '{domain}' from silent dismiss. {remaining} remaining.");
+            return out.done_msg(
+                format!("Success: Removed '{domain}' from silent dismiss. {remaining} remaining."),
+                serde_json::json!({ "domain": domain, "remaining": remaining }),
+                format!("Removed {domain} from silent dismiss"),
+            );
         }
         FederationCommand::DismissList => {
             let rules = dismiss.list_rules(&pool).await?;
-            println!("[ SILENT DISMISS ]");
+            if out.is_json() {
+                let entries: Vec<_> = rules
+                    .into_iter()
+                    .map(|(domain, created_at)| {
+                        serde_json::json!({ "domain": domain, "added": format_created_at(created_at) })
+                    })
+                    .collect();
+                return out.emit(serde_json::json!({ "domains": entries, "total": entries.len() }));
+            }
+            out.line("[ SILENT DISMISS ]");
             if rules.is_empty() {
-                println!("No domains configured.");
-                println!("---");
-                println!("Total: 0 domains.");
+                out.line("No domains configured.");
+                out.line("---");
+                out.line("Total: 0 domains.");
                 return Ok(());
             }
             for (i, (domain, created_at)) in rules.iter().enumerate() {
                 let date = format_created_at(*created_at);
-                println!("{}. {domain}\t(Added: {date})", i + 1);
+                out.line(format!("{}. {domain}\t(Added: {date})", i + 1));
             }
-            println!("---");
-            println!("Total: {} domains.", rules.len());
+            out.line("---");
+            out.line(format!("Total: {} domains.", rules.len()));
         }
         FederationCommand::DismissFlush => {
             dismiss.flush(&pool).await?;
-            println!("WARNING: Silent dismiss list flushed. 0 domains remain.");
+            return out.done_msg(
+                "WARNING: Silent dismiss list flushed. 0 domains remain.",
+                serde_json::json!({ "flushed": true, "total": 0 }),
+                "Silent dismiss list flushed",
+            );
         }
         FederationCommand::Status => {
             let tracker = FederationTracker::new();
             tracker.hydrate(&pool).await?;
             let stats = tracker.snapshot();
+            if out.is_json() {
+                let entries: Vec<_> = stats
+                    .into_iter()
+                    .map(|s| {
+                        serde_json::json!({
+                            "domain": s.domain,
+                            "successful_deliveries": s.successful_deliveries,
+                            "queued_messages": s.queued_messages,
+                            "failed_http": s.failed_http,
+                            "failed_https": s.failed_https,
+                            "failed_smtp": s.failed_smtp,
+                        })
+                    })
+                    .collect();
+                return out.emit(serde_json::json!({ "traffic": entries }));
+            }
             if stats.is_empty() {
-                println!("[ TRAFFIC ANOMALIES ]");
-                println!("No federation traffic recorded.");
+                out.line("[ TRAFFIC ANOMALIES ]");
+                out.line("No federation traffic recorded.");
                 return Ok(());
             }
-            println!("[ TRAFFIC ANOMALIES ]");
+            out.line("[ TRAFFIC ANOMALIES ]");
             for s in stats {
                 let total_failed = s.failed_http + s.failed_https + s.failed_smtp;
                 let mut success_info = format!("{} Delivered", s.successful_deliveries);
@@ -166,14 +236,22 @@ pub async fn federation(args: &Args, cmd: &FederationCommand) -> Result<()> {
                 if fail_info.is_empty() && total_failed == 0 {
                     fail_info = " 0 Failed".into();
                 }
-                println!(
+                out.line(format!(
                     "- {} : {} / {} pending /{}",
                     s.domain, success_info, s.queued_messages, fail_info
-                );
+                ));
             }
         }
     }
     Ok(())
+}
+
+fn rule_action(policy: &str) -> &'static str {
+    if policy.eq_ignore_ascii_case("REJECT") {
+        "allow"
+    } else {
+        "block"
+    }
 }
 
 fn format_created_at(ts: i64) -> String {

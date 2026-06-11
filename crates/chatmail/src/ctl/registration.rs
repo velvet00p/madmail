@@ -23,28 +23,41 @@ use chatmail_db::{get_bool_setting, set_setting, settings_keys};
 use chatmail_types::Result;
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 
 pub async fn registration(args: &Args, cmd: &RegistrationCommand) -> Result<()> {
     let ctx = CtlContext::from_args(args)?;
     let pool = ctx.open_pool().await?;
+    let out = CtlOut::from_args(args, "registration");
 
     match cmd {
         RegistrationCommand::Open => {
             set_setting(&pool, settings_keys::REGISTRATION_OPEN, "true").await?;
-            println!("Registration is now OPEN");
+            out.done_msg(
+                "Registration is now OPEN",
+                serde_json::json!({ "open": true }),
+                "Registration is now OPEN",
+            )
         }
         RegistrationCommand::Close => {
             set_setting(&pool, settings_keys::REGISTRATION_OPEN, "false").await?;
-            println!("Registration is now CLOSED");
+            out.done_msg(
+                "Registration is now CLOSED",
+                serde_json::json!({ "open": false }),
+                "Registration is now CLOSED",
+            )
         }
         RegistrationCommand::Status => {
             let open = get_bool_setting(&pool, settings_keys::REGISTRATION_OPEN, false).await?;
-            if open {
-                println!("Registration is OPEN");
+            if out.is_json() {
+                out.emit(serde_json::json!({ "open": open }))
+            } else if open {
+                out.line("Registration is OPEN");
+                Ok(())
             } else {
-                println!("Registration is CLOSED");
+                out.line("Registration is CLOSED");
+                Ok(())
             }
         }
     }
-    Ok(())
 }

@@ -23,6 +23,37 @@ fn state_argv(state_dir: &str) -> Vec<String> {
 }
 
 #[test]
+fn e2e_ctl_accounts_status_json() {
+    let dir = TempDir::new().expect("tempdir");
+    let state = dir.path().to_string_lossy().to_string();
+    let mut base = state_argv(&state);
+    base.push("--json".into());
+
+    let out = chatmail()
+        .args(base)
+        .arg("accounts")
+        .arg("status")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let envelope: Value = serde_json::from_slice(&out).expect("accounts status --json stdout");
+    assert_eq!(envelope["ok"], true);
+    assert_eq!(envelope["command"], "accounts status");
+    let data = &envelope["data"];
+    assert!(data["login_count"].is_number());
+    assert!(data["registration_open"].is_boolean());
+    assert!(data["token_required"].is_boolean());
+    assert!(data["jit_enabled"].is_boolean());
+    assert!(data["blocklisted"].is_number());
+    assert!(data["mail_directories"].is_number());
+    assert!(data["state_dir"].is_string());
+    assert!(data["database"].is_string());
+}
+
+#[test]
 fn e2e_ctl_accounts_create_random_delete_and_ban_list() {
     let dir = TempDir::new().expect("tempdir");
     let state = dir.path().to_string_lossy().to_string();

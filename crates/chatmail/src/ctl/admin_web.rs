@@ -24,6 +24,7 @@ use chatmail_db::{delete_setting, set_setting};
 use chatmail_types::{ChatmailError, Result};
 
 use super::context::CtlContext;
+use super::output::CtlOut;
 use super::request_reload::notify_http_routes_changed;
 
 /// CLI for the embedded admin-web SPA (`external/madmail-admin-web/build`), served at `admin_web_path`.
@@ -32,24 +33,34 @@ pub async fn admin_web(args: &Args, cmd: &AdminWebCommand) -> Result<()> {
     ctx.require_db()?;
 
     match cmd {
-        AdminWebCommand::Status => status(&ctx).await,
-        AdminWebCommand::Enable => set_flag(&ctx, true).await,
-        AdminWebCommand::Disable => set_flag(&ctx, false).await,
-        AdminWebCommand::Path { path, reset } => path_cmd(&ctx, path.as_deref(), *reset).await,
+        AdminWebCommand::Status => status(args, &ctx).await,
+        AdminWebCommand::Enable => set_flag(args, &ctx, true).await,
+        AdminWebCommand::Disable => set_flag(args, &ctx, false).await,
+        AdminWebCommand::Path { path, reset } => {
+            path_cmd(args, &ctx, path.as_deref(), *reset).await
+        }
     }
 }
 
-async fn status(ctx: &CtlContext) -> Result<()> {
+async fn status(args: &Args, ctx: &CtlContext) -> Result<()> {
+    let out = CtlOut::from_args(args, "admin-web status");
     let pool = ctx.open_pool().await?;
     let settings = ctx.load_settings_map().await?;
-    let enabled = match settings.get(ADMIN_WEB_ENABLED).map(|s| s.as_str()) {
-        Some("true") => "enabled",
-        _ => "disabled",
-    };
+    let enabled = matches!(
+        settings.get(ADMIN_WEB_ENABLED).map(|s| s.as_str()),
+        Some("true")
+    );
 
     let effective_path = resolve_admin_web_path(&ctx.config, &pool)
         .await
         .unwrap_or_else(|| DEFAULT_ADMIN_WEB_PATH.into());
+
+    if out.is_json() {
+        return out.emit(serde_json::json!({
+            "enabled": enabled,
+            "path": effective_path,
+        }));
+    }
 
     let db_path = settings
         .get(ADMIN_WEB_PATH)
@@ -57,22 +68,26 @@ async fn status(ctx: &CtlContext) -> Result<()> {
         .map(|s| s.as_str())
         .unwrap_or("(default)");
 
-    println!();
-    println!("  Admin Web Dashboard:  {enabled}");
-    println!("  Admin Web Path:       {effective_path}");
+    out.blank();
+    out.line(format!(
+        "  Admin Web Dashboard:  {}",
+        if enabled { "enabled" } else { "disabled" }
+    ));
+    out.line(format!("  Admin Web Path:       {effective_path}"));
     if db_path != "(default)" && effective_path != db_path {
-        println!("  DB override:          {db_path}");
+        out.line(format!("  DB override:          {db_path}"));
     } else if ctx.config.admin_web_path.is_some() && db_path == "(default)" {
         if let Some(ref p) = ctx.config.admin_web_path {
-            println!("  Config path:          {p}");
+            out.line(format!("  Config path:          {p}"));
         }
     }
-    println!("  SPA source:           external/madmail-admin-web/build (embedded at compile time)");
-    println!();
+    out.line("  SPA source:           external/madmail-admin-web/build (embedded at compile time)");
+    out.blank();
     Ok(())
 }
 
-async fn set_flag(ctx: &CtlContext, on: bool) -> Result<()> {
+async fn set_flag(args: &Args, ctx: &CtlContext, on: bool) -> Result<()> {
+    let out = CtlOut::from_args(args, "admin-web");
     let pool = ctx.open_pool().await?;
     set_setting(&pool, ADMIN_WEB_ENABLED, if on { "true" } else { "false" }).await?;
     if on {
@@ -81,15 +96,24 @@ async fn set_flag(ctx: &CtlContext, on: bool) -> Result<()> {
     let path = resolve_admin_web_path(&ctx.config, &pool)
         .await
         .unwrap_or_else(|| DEFAULT_ADMIN_WEB_PATH.into());
-    if on {
-        println!("✅ Admin web dashboard enabled at {path}");
-    } else {
-        println!("🚫 Admin web dashboard disabled (returns 404 on the admin-web path)");
-    }
-    notify_http_routes_changed(ctx, &path).await
+    notify_http_routes_changed(ctx, &path).await?;
+    out.done_msg(
+        if on {
+            format!("✅ Admin web dashboard enabled at {path}")
+        } else {
+            "🚫 Admin web dashboard disabled (returns 404 on the admin-web path)".into()
+        },
+        serde_json::json!({ "enabled": on, "path": path }),
+        if on {
+            format!("Admin web dashboard enabled at {path}")
+        } else {
+            "Admin web dashboard disabled".into()
+        },
+    )
 }
 
-async fn path_cmd(ctx: &CtlContext, path: Option<&str>, reset: bool) -> Result<()> {
+async fn path_cmd(args: &Args, ctx: &CtlContext, path: Option<&str>, reset: bool) -> Result<()> {
+    let out = CtlOut::from_args(args, "admin-web path");
     let pool = ctx.open_pool().await?;
 
     if reset {
@@ -97,16 +121,22 @@ async fn path_cmd(ctx: &CtlContext, path: Option<&str>, reset: bool) -> Result<(
         let effective = resolve_admin_web_path(&ctx.config, &pool)
             .await
             .unwrap_or_else(|| DEFAULT_ADMIN_WEB_PATH.into());
-        println!("🔄 Admin web path reset (effective: {effective})");
-        return notify_http_routes_changed(ctx, &effective).await;
+        notify_http_routes_changed(ctx, &effective).await?;
+        return out.done_msg(
+            format!("🔄 Admin web path reset (effective: {effective})"),
+            serde_json::json!({ "path": effective, "reset": true }),
+            format!("Admin web path reset (effective: {effective})"),
+        );
     }
 
     let Some(new_path) = path else {
-        if let Some(effective) = resolve_admin_web_path(&ctx.config, &pool).await {
-            println!("Current admin web path: {effective}");
-        } else {
-            println!("Current admin web path: {DEFAULT_ADMIN_WEB_PATH}");
+        let effective = resolve_admin_web_path(&ctx.config, &pool)
+            .await
+            .unwrap_or_else(|| DEFAULT_ADMIN_WEB_PATH.into());
+        if out.is_json() {
+            return out.emit(serde_json::json!({ "path": effective }));
         }
+        out.line(format!("Current admin web path: {effective}"));
         return Ok(());
     };
 
@@ -114,6 +144,10 @@ async fn path_cmd(ctx: &CtlContext, path: Option<&str>, reset: bool) -> Result<(
         .ok_or_else(|| ChatmailError::config("admin web path must not be empty"))?;
     set_setting(&pool, ADMIN_WEB_PATH, &normalized).await?;
     set_setting(&pool, ADMIN_WEB_ENABLED, "true").await?;
-    println!("✅ Admin web dashboard enabled at {normalized}");
-    notify_http_routes_changed(ctx, &normalized).await
+    notify_http_routes_changed(ctx, &normalized).await?;
+    out.done_msg(
+        format!("✅ Admin web dashboard enabled at {normalized}"),
+        serde_json::json!({ "enabled": true, "path": normalized }),
+        format!("Admin web dashboard enabled at {normalized}"),
+    )
 }

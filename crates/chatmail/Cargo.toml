@@ -16,7 +16,10 @@ path = "src/lib.rs"
 name = "madmail"
 path = "src/main.rs"
 
+[build-dependencies]
+
 [dependencies]
+clap_complete = { workspace = true }
 axum = { workspace = true }
 chatmail-auth = { workspace = true }
 chatmail-admin = { workspace = true }
