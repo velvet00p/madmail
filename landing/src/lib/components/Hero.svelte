@@ -3,7 +3,7 @@
 	import MadGlitchText from '$lib/components/MadGlitchText.svelte';
 	import MadmailLogo from '$lib/components/MadmailLogo.svelte';
 	import NavLinks from '$lib/components/NavLinks.svelte';
-	import { docNav, repo } from '$lib/nav.js';
+	import { heroNav, repo } from '$lib/nav.js';
 
 	let { onDeltachat = () => {} } = $props();
 </script>
@@ -20,7 +20,7 @@
 		<button type="button" class="link" onclick={onDeltachat}>Delta Chat</button>, encrypted,
 		federated, one binary.
 	</p>
-	<NavLinks links={docNav} class="nav" />
+	<NavLinks links={heroNav} class="nav" ariaLabel="Site navigation" />
 	<div class="actions">
 		<Button href="{repo}/releases" variant="primary">Download</Button>
 		<Button href="/docs/quick-setup">Quick Start</Button>

@@ -1,6 +1,6 @@
 # Technical Design Document — Rust Chatmail Mailserver
 
-This directory contains the Technical Design Document (TDD) for **chatmail-rs**, a Rust implementation of the Chatmail federated mail server. The running binary and root crate are named **`chatmail`** (`crates/chatmail/`).
+This directory contains the Technical Design Document (TDD) for **madmail-v2**, a Rust implementation of the Chatmail federated mail server. The running binary and root crate are named **`chatmail`** (`crates/chatmail/`).
 
 ## Workspace crates
 
@@ -38,7 +38,7 @@ Twenty-one library crates under `crates/` plus integration tests in `tests/`. Fu
 | `11-proxy-services.md` | TURN, Iroh, Shadowsocks |
 | `12-security.md` | PGP-only, No-Log, federation policy, TLS |
 | `13-configuration.md` | `maddy.conf` + settings DB |
-| `14-cli-tools.md` | CLI subcommands — Madmail parity matrix |
+| `14-cli-tools.md` | CLI subcommands — Madmail parity matrix; links [`../guide/cli/`](../guide/cli/README.md) |
 | `16-testing.md` | Unit, integration, Delta Chat E2E |
 | `17-data-models.md` | SQLite schema |
 | `19-certificates.md` | TLS: install modes, ACME |
@@ -78,12 +78,17 @@ Phase sprint plans (each step = one file, with TDD/RFC links):
 
 Regenerate step files: `python3 scripts/generate-phase-plans.py`
 
+## Operator CLI reference
+
+Per-command usage (flags, examples, JSON output): **[`../guide/cli/README.md`](../guide/cli/README.md)**. The TDD CLI section [`14-cli-tools.md`](14-cli-tools.md) tracks **implementation parity** and maps commands to `crates/chatmail/src/ctl/`.
+
 ## How to use this document
 
 1. Start with `00-intro.md` for context.
 2. Read `01-architecture.md` for system shape and the **`crates/` map**.
 3. Dive into specific areas as needed during implementation.
-4. When adding or splitting crates, update `01-architecture.md` and this README.
+4. Operators: use [`../guide/cli/`](../guide/cli/README.md) for day-to-day `madmail` commands.
+5. When adding or splitting crates, update `01-architecture.md` and this README.
 
 ## Contributing
 
@@ -91,6 +96,6 @@ When implementing a feature, update the corresponding section and note the ownin
 
 ## Status
 
-Living design document. Core protocol sections (SMTP, IMAP, federation, admin, storage, auth, proxies, push) map to implemented crates. [23-push-notifications.md](23-push-notifications.md) documents XDELTAPUSH + `notifications.delta.chat` (default off). [22-bandwidth-monitoring.md](22-bandwidth-monitoring.md) is specification-only until `chatmail-state` gains counters.
+Design document updated as implementation progresses. Core protocol sections (SMTP, IMAP, federation, admin, storage, auth, proxies, push) map to implemented crates. [04-storage-layer.md](04-storage-layer.md) documents Maildir + CAS blobs, `chatmail-uidlist`, and `mail_fsync`/`blob_dedup` policy. [23-push-notifications.md](23-push-notifications.md) documents XDELTAPUSH + `notifications.delta.chat` (default off). [22-bandwidth-monitoring.md](22-bandwidth-monitoring.md) is specification-only until `chatmail-state` gains counters.
 
-**Target**: Feature parity with Madmail (Go) with Rust workspace ergonomics and safety.
+**Target**: Feature parity with Madmail (Go), implemented as a Rust workspace.

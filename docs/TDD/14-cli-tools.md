@@ -1,125 +1,175 @@
 # CLI tools (Madmail parity)
 
-chatmail-rs exposes the same **single binary** model as Madmail: one executable (`chatmail`, deployed as `/usr/local/bin/madmail` on test servers) with global flags and subcommands.
+madmail-v2 exposes the same **single binary** model as Madmail: one executable (`chatmail` in dev, **`madmail`** in production) with global flags and subcommands.
 
-**Reference docs:** [`context/madmail/docs/chatmail/commands.md`](../../context/madmail/docs/chatmail/commands.md) (operator guide; incomplete vs full Go tree).
+## Operator guide (per-command reference)
 
-**Reference code:** [`context/madmail/internal/cli/`](../../context/madmail/internal/cli/) — `app.go` registers subcommands from `ctl/*.go` via `init()` + `AddSubcommand`.
+**Primary operator docs:** [`../guide/cli/README.md`](../guide/cli/README.md) — one page per command (flags, examples, JSON schemas).
 
-**Rust layout (target):**
+| Topic | Guide index |
+|-------|-------------|
+| Global flags, `--json` | [`global-flags.md`](../guide/cli/global-flags.md) · [`json-output.md`](../guide/cli/json-output.md) |
+| Install / uninstall | [`install.md`](../guide/cli/install.md) · [`uninstall.md`](../guide/cli/uninstall.md) |
+| TLS / ACME | [`certificate.md`](../guide/cli/certificate.md) · [`certificate-autocert.md`](../guide/cli/certificate-autocert.md) |
+| Accounts & registration | [`accounts.md`](../guide/cli/accounts.md) · [`registration.md`](../guide/cli/registration.md) · [`registration-tokens.md`](../guide/cli/registration-tokens.md) |
+| Federation & routing | [`federation.md`](../guide/cli/federation.md) · [`endpoint-cache.md`](../guide/cli/endpoint-cache.md) |
+| Services & ports | [`port.md`](../guide/cli/port.md) · [`push.md`](../guide/cli/push.md) · [`webimap.md`](../guide/cli/webimap.md) · [`websmtp.md`](../guide/cli/websmtp.md) |
+| Maintenance | [`tasks.md`](../guide/cli/tasks.md) · [`tasks-run.md`](../guide/cli/tasks-run.md) |
+| Message limits | [`message-size.md`](../guide/cli/message-size.md) |
+
+**Design / parity (this file):** implementation status, `ctl/` module map, Madmail Go references.
+
+**Madmail Go reference:** [`context/madmail/docs/chatmail/commands.md`](../../context/madmail/docs/chatmail/commands.md).
+
+**Rust layout:**
 
 | Crate / path | Role |
 |--------------|------|
-| `chatmail-config::cli` | `clap` root: global flags + subcommand enum |
-| `chatmail::ctl::*` | One module per Madmail ctl file (direct DB / no full module framework where possible) |
-| `chatmail::upgrade` | Signed binary replacement + systemd (mirrors `ctl/upgrade.go`) |
+| `chatmail-config::cli` | `clap` root: global flags + subcommand enum (`cli.rs`) |
+| `chatmail::ctl::*` | One module per command family (`dispatch.rs` routes here) |
+| `chatmail::upgrade` | Signed binary replacement + systemd |
 | `chatmail::boot` | Server start (`run`) |
 
-Madmail ctl commands use **`--cfg-block`** / **`--storage-cfg-block`** when config blocks are not `local_authdb` / `local_mailboxes`. Rust ports should accept the same flags and talk to `chatmail.db` / maildir via `chatmail-db` + `chatmail-storage`, not load the Go module framework.
-
-After on-disk DB changes while the daemon runs, operators call **`POST /admin/cache/reload`** (Admin API) — same as Madmail.
+After on-disk DB changes while the daemon runs, operators call **`madmail reload`** or **`POST /admin/reload`** (Admin API).
 
 ---
 
 ## Global flags
 
-| Flag | Madmail | chatmail-rs | Notes |
+| Flag | Madmail | madmail-v2 | Guide |
 |------|---------|-------------|-------|
-| `--config` | `MADDY_CONFIG` → `/etc/<binary>/<binary>.conf` | `CHATMAIL_CONFIG`; auto **`./data/chatmail.toml`** when present | Parses `maddy.conf` + TOML |
-| `--state-dir` | `/var/lib/<binary>` | `CHATMAIL_STATE_DIR`; auto **`./data`** when it contains `chatmail.db` / `admin_token` | Overridden by `state_dir` in config |
+| `--config` | `MADDY_CONFIG` | `CHATMAIL_CONFIG`; auto `./data/chatmail.toml` | [`global-flags.md`](../guide/cli/global-flags.md) |
+| `--state-dir` / `--libexec` | `/var/lib/<binary>` | `CHATMAIL_STATE_DIR`; auto `./data` when DB present | same |
+| `--json` | — | Machine-readable stdout (all ctl commands) | [`json-output.md`](../guide/cli/json-output.md) |
 | `--debug` | yes | — | Use `debug` in config file only |
-| `run --libexec` | yes | `--libexec` (alias of `--state-dir`) | **done** (Madmail systemd `ExecStart` compat) |
 | `run --log` | yes | — | Use `log` in config file only (default off) |
 
 ---
 
-## Command parity matrix
+## Command index (guide → implementation)
 
-Status legend: **done** · **planned** (TDD scope) · **defer** (post-MVP) · **n/a** (Madmail-only / removed)
+Status: **done** · **planned** (parsed, `not_implemented`) · **defer**
+
+| Command | Guide | `ctl/` module | Status |
+|---------|-------|---------------|--------|
+| `run` | [run.md](../guide/cli/run.md) | `boot` | **done** |
+| `install` | [install.md](../guide/cli/install.md) | `install/` | **done** |
+| `uninstall` | [uninstall.md](../guide/cli/uninstall.md) | `uninstall.rs` | **done** |
+| `upgrade` / `update` | [upgrade.md](../guide/cli/upgrade.md) | `upgrade.rs` | **done** |
+| `version` | [version.md](../guide/cli/version.md) | `version.rs` | **done** |
+| `reload` | [reload.md](../guide/cli/reload.md) | `reload.rs` | **done** |
+| `status` | [status.md](../guide/cli/status.md) | `status_cmd.rs` | **done** |
+| `completion` | [completion.md](../guide/cli/completion.md) | `docs.rs` | **done** |
+| `admin-token` | [admin-token.md](../guide/cli/admin-token.md) | `admin_token.rs` | **done** |
+| `admin-web` | [admin-web.md](../guide/cli/admin-web.md) | `admin_web.rs` | **done** |
+| `certificate` | [certificate.md](../guide/cli/certificate.md) | `certificate.rs` | **done** (`get`, `regenerate`, `status`, `autocert`) |
+| `accounts` | [accounts.md](../guide/cli/accounts.md) | `accounts.rs` | **done** |
+| `ban-list` | [ban-list.md](../guide/cli/ban-list.md) | `accounts.rs` | **done** (alias) |
+| `blocklist` | [blocklist.md](../guide/cli/blocklist.md) | `blocklist_cmd.rs` | **done** |
+| `create-user` | [create-user.md](../guide/cli/create-user.md) | `accounts.rs` | **done** |
+| `delete` | [delete.md](../guide/cli/delete.md) | `delete_cmd.rs` | **done** |
+| `registration` | [registration.md](../guide/cli/registration.md) | `registration.rs` | **done** |
+| `registration-tokens` | [registration-tokens.md](../guide/cli/registration-tokens.md) | `registration_tokens.rs` | **done** |
+| `federation` | [federation.md](../guide/cli/federation.md) | `federation.rs` | **done** (+ `dismiss`, `undismiss`, `dismiss-list`, `dismiss-flush`) |
+| `endpoint-cache` / `dns-cache` | [endpoint-cache.md](../guide/cli/endpoint-cache.md) | `endpoint_cache.rs` | **done** |
+| `sharing` | [sharing.md](../guide/cli/sharing.md) | `sharing.rs` | **done** |
+| `port` | [port.md](../guide/cli/port.md) | `port.rs` | **done** |
+| `message-size` | [message-size.md](../guide/cli/message-size.md) | `message_size.rs` | **done** |
+| `language` | [language.md](../guide/cli/language.md) | `language.rs` | **done** |
+| `push` | [push.md](../guide/cli/push.md) | `push.rs` | **done** |
+| `webimap` | [webimap.md](../guide/cli/webimap.md) | `service_toggle.rs` | **done** |
+| `websmtp` | [websmtp.md](../guide/cli/websmtp.md) | `service_toggle.rs` | **done** |
+| `tasks` | [tasks.md](../guide/cli/tasks.md) | `tasks.rs` | **done** |
+| `html-export` | [html-export.md](../guide/cli/html-export.md) | `html.rs` | **done** |
+| `html-serve` | [html-serve.md](../guide/cli/html-serve.md) | `html.rs` | **done** |
+| `creds` | [creds.md](../guide/cli/creds.md) | — | **planned** |
+| `hash` | [hash.md](../guide/cli/hash.md) | — | **planned** |
+| `submission-access` | [submission-access.md](../guide/cli/submission-access.md) | — | **planned** |
+| `queue` | [queue.md](../guide/cli/queue.md) | — | **defer** (use `tasks` + `/admin/queue`) |
+| `exchanger` | [exchanger.md](../guide/cli/exchanger.md) | — | **defer** |
+| `imap-acct` | [imap-acct.md](../guide/cli/imap-acct.md) | — | **planned** |
+| `imap-mboxes` | [imap-mboxes.md](../guide/cli/imap-mboxes.md) | — | **planned** |
+| `imap-msgs` | [imap-msgs.md](../guide/cli/imap-msgs.md) | — | **defer** |
+| `migrate-pgp-config` | [migrate-pgp-config.md](../guide/cli/migrate-pgp-config.md) | — | **planned** |
+
+`dispatch.rs` `not_implemented` list (parsed but no handler): `creds`, `hash`, `submission-access`, `queue`, `exchanger`, `imap-acct`, `imap-mboxes`, `imap-msgs`, `migrate-pgp-config`.
+
+---
+
+## Command parity matrix (by category)
 
 ### Server lifecycle
 
-| Command | Subcommands / notes | Madmail source | chatmail-rs |
-|---------|---------------------|----------------|-------------|
-| *(default)* / `run` | Start SMTP/IMAP/HTTP/federation | `maddy.go` | **done** |
-| `upgrade` | Signed file or URL | `ctl/upgrade.go` | **done** |
-| `update` | Alias of `upgrade` (URL or local path) | `ctl/upgrade.go` | **done** |
-| `version` | Build metadata | `maddy.go` | **done** (crate version) |
-| `install` | Interactive / simple / non-interactive setup | `ctl/install.go`, `maddy.conf.j2` | **done** (non-interactive + `--simple`; no DNS-01 install yet) |
-| `certificate` | `get`, `regenerate` (Let's Encrypt HTTP-01) | — (chatmail-rs + lers) | **done** |
-| `uninstall` | `--keep-data`, `--keep-config`, … | `ctl/uninstall.go` | **done** |
-| `reload` | POST `/admin/reload` (process restart) | `ctl/reload_config.go` | **done** (`--url`, `--insecure`) |
-| `status` | Connections, users, uptime (`--details`) | `ctl/online.go` | **done** |
+| Command | Guide | Madmail source | madmail-v2 |
+|---------|-------|----------------|-------------|
+| `run` | [run.md](../guide/cli/run.md) | `maddy.go` | **done** |
+| `install` | [install.md](../guide/cli/install.md) | `ctl/install.go` | **done** (non-interactive + `--simple`; no DNS-01) |
+| `uninstall` | [uninstall.md](../guide/cli/uninstall.md) | `ctl/uninstall.go` | **done** |
+| `upgrade` / `update` | [upgrade.md](../guide/cli/upgrade.md) | `ctl/upgrade.go` | **done** |
+| `version` | [version.md](../guide/cli/version.md) | `maddy.go` | **done** |
+| `reload` | [reload.md](../guide/cli/reload.md) | `ctl/reload_config.go` | **done** |
+| `status` | [status.md](../guide/cli/status.md) | `ctl/online.go` | **done** (`--details`) |
+| `certificate` | [certificate.md](../guide/cli/certificate.md) | — (lers) | **done** — `get`, `regenerate`, `status`, [`autocert`](../guide/cli/certificate-autocert.md) |
 
-### Deploy & signing
+### Accounts & credentials
 
-| Mechanism | Madmail | chatmail-rs |
-|-----------|---------|-------------|
-| `make push` | `Makefile` + `sign.py` | **done** (`madmailv2/Makefile`) |
-| Ed25519 pubkey | `internal/auth/signature_key.go` | **done** (same hex in `upgrade.rs`) |
+| Command | Guide | Madmail source | madmail-v2 |
+|---------|-------|----------------|-------------|
+| `accounts` | [accounts.md](../guide/cli/accounts.md) | `ctl/accounts_*.go` | **done** |
+| `ban-list` | [ban-list.md](../guide/cli/ban-list.md) | `ctl/accounts_direct.go` | **done** |
+| `blocklist` | [blocklist.md](../guide/cli/blocklist.md) | `ctl/blocklist.go` | **done** |
+| `create-user` | [create-user.md](../guide/cli/create-user.md) | `ctl/create_user.go` | **done** |
+| `delete` | [delete.md](../guide/cli/delete.md) | `ctl/delete.go` | **done** |
+| `registration` | [registration.md](../guide/cli/registration.md) | `ctl/users.go` | **done** |
+| `registration-tokens` | [registration-tokens.md](../guide/cli/registration-tokens.md) | `ctl/registration_token.go` | **done** |
+| `creds` | [creds.md](../guide/cli/creds.md) | `ctl/users.go` | **planned** |
 
-### Operator / token
+### Policy & delivery
 
-| Command | Madmail source | chatmail-rs |
-|---------|----------------|-------------|
-| `admin-token` | `ctl/admin_token.go` | **done** — pretty URL + token; `--raw` for scripts; reads `__SMTP_HOSTNAME__`, `__HTTPS_PORT__`, `__ADMIN_PATH__` from DB |
-| `admin-web` | `ctl/adminweb.go` | **done** — CLI toggles `__ADMIN_WEB_*__`; HTTP serves embedded `context/madmail/admin-web/build` at `admin_web_path` |
-| `admin-web` | `ctl/adminweb.go` | **planned** (enable/disable www override) |
-| `hash` | `ctl/hash.go` | **planned** (password hashing helper) |
+| Command | Guide | Madmail source | madmail-v2 |
+|---------|-------|----------------|-------------|
+| `federation` | [federation.md](../guide/cli/federation.md) | `ctl/federation.go` | **done** — includes silent dismiss (`chatmail-state::silent_dismiss`) |
+| `endpoint-cache` | [endpoint-cache.md](../guide/cli/endpoint-cache.md) | `ctl/dnscache.go` | **done** |
+| `sharing` | [sharing.md](../guide/cli/sharing.md) | `ctl/sharing.go` | **done** |
+| `port` | [port.md](../guide/cli/port.md) | `ctl/port.go` | **done** |
+| `message-size` | [message-size.md](../guide/cli/message-size.md) | `appendlimit` / SMTP size | **done** — `__APPENDLIMIT__`, `__MAX_MESSAGE_SIZE__` |
+| `language` | [language.md](../guide/cli/language.md) | `ctl/language.go` | **done** |
+| `submission-access` | [submission-access.md](../guide/cli/submission-access.md) | `ctl/submission_access.go` | **planned** |
+| `tasks` | [tasks.md](../guide/cli/tasks.md) | imapsql cleanup | **done** — see [21-scheduled-maintenance.md](21-scheduled-maintenance.md) |
+| `queue` | [queue.md](../guide/cli/queue.md) | `ctl/queue.go` | **defer** |
+| `exchanger` | [exchanger.md](../guide/cli/exchanger.md) | `ctl/exchanger.go` | **defer** |
 
-### Accounts & credentials (direct DB)
+### Services (DB toggles)
 
-| Command | Subcommands | Madmail source | chatmail-rs |
-|---------|-------------|----------------|-------------|
-| `accounts` | `status`, `info`, `create`, `create-random`, `delete`, `ban`, `unban`, `ban-list`, `export`, `import`, `delete-all` | `ctl/accounts_bulk.go`, `accounts_direct.go` | **done** — direct DB via `chatmail-db` + maildir |
-| `ban-list` | Top-level alias | `ctl/accounts_direct.go` | **done** (alias of `accounts ban-list`) |
-| `creds` | `list`, `create`, `remove`, `password`, `registration`, `jit`, `turn`, `logging` | `ctl/users.go` | **planned** |
-| `create-user` | Random account JSON | `ctl/create_user.go` | **done** (same as `accounts create-random`) |
-| `delete` | Remove user + mail + blocklist | `ctl/delete.go` | **done** |
-
-### IMAP tooling
-
-| Command | Subcommands | Madmail source | chatmail-rs |
-|---------|-------------|----------------|-------------|
-| `imap-acct` | `list`, `create`, `remove`, `quota`, `purge-*`, `stat`, `appendlimit`, `prune-unused` | `ctl/imapacct.go`, `appendlimit.go` | **planned** (`prune-unused` → `tasks run prune-unused-accounts`) |
-| `imap-mboxes` | `list`, `create`, `remove`, `rename` | `ctl/imap.go` | **planned** |
-| `imap-msgs` | `add`, flags, `remove`, `copy`, `move`, `list`, `dump` | `ctl/imap.go` | **defer** (debug / migration) |
-
-### Policy & runtime settings (DB `settings` table)
-
-| Command | Subcommands | Madmail source | chatmail-rs |
-|---------|-------------|----------------|-------------|
-| `federation` | `policy`, `block`, `allow`, `remove`, `flush`, `list`, `status` | `ctl/federation.go` | **done** |
-| `blocklist` | `list`, `add`, `remove` | `ctl/blocklist.go` | **done** |
-| `sharing` | `list`, `create`, `remove`, `edit`, `reserve` | `ctl/sharing.go` | **done** |
-| `endpoint-cache` | `list`, `set`, `get`, `remove` | `ctl/dnscache.go` | **done** (alias `dns-cache`) |
-| `registration` | `open`, `close`, `status` | `ctl/users.go` (`creds registration`) | **done** (top-level `chatmail registration`) |
-| `registration-tokens` | `create`, `list`, `status`, `delete` | `ctl/registration_token.go` | **done** |
-| `port` | `status`, `set`, `reset`, `local`, `public` | `ctl/port.go` | **done** (per-service subcommands) |
-| `submission-access` | `status`, `local`, `public` | `ctl/submission_access.go` | **planned** |
-| `language` | `status`, `set`, `reset` | `ctl/language.go` | **done** |
-| `exchanger` | `list`, `add`, `remove`, `enable`, `disable` | `ctl/exchanger.go` | **defer** |
-| `queue` | `purge` | `ctl/queue.go` | **defer** (use `tasks` + `/admin/queue`) |
-| `tasks` | `list`, `run`, `run-all` | `imapsql` cleanup loops | **done** — [`21-scheduled-maintenance.md`](21-scheduled-maintenance.md) |
+| Command | Guide | Settings keys | madmail-v2 |
+|---------|-------|---------------|-------------|
+| `push` | [push.md](../guide/cli/push.md) | `__PUSH_MODE__` | **done** — [23-push-notifications.md](23-push-notifications.md) |
+| `webimap` | [webimap.md](../guide/cli/webimap.md) | `__WEBIMAP_ENABLED__` | **done** |
+| `websmtp` | [websmtp.md](../guide/cli/websmtp.md) | `__WEBSMTP_ENABLED__` | **done** |
+| `admin-web` | [admin-web.md](../guide/cli/admin-web.md) | `__ADMIN_WEB_*__` | **done** |
 
 ### Web / HTML
 
-| Command | Madmail source | chatmail-rs |
-|---------|----------------|-------------|
-| `html-export` | `ctl/html.go` | **done** |
-| `html-serve` | `ctl/html.go` | **done** |
-| `webimap` | — (admin API only in Go) | **done** (`enable` / `disable` / `status`) |
-| `websmtp` | — | **done** |
-| `push` | `status`, `auto`, `on`, `off` | **done** — `__PUSH_MODE__` (default **`off`**); auto disables after 5 consecutive notification-proxy failures ([23-push-notifications.md](23-push-notifications.md)) |
+| Command | Guide | madmail-v2 |
+|---------|-------|-------------|
+| `html-export` | [html-export.md](../guide/cli/html-export.md) | **done** |
+| `html-serve` | [html-serve.md](../guide/cli/html-serve.md) | **done** — sets `www_dir` in config |
+
+### IMAP tooling
+
+| Command | Guide | madmail-v2 |
+|---------|-------|-------------|
+| `imap-acct` | [imap-acct.md](../guide/cli/imap-acct.md) | **planned** (`prune-unused` → `tasks run prune-unused-accounts`) |
+| `imap-mboxes` | [imap-mboxes.md](../guide/cli/imap-mboxes.md) | **planned** |
+| `imap-msgs` | [imap-msgs.md](../guide/cli/imap-msgs.md) | **defer** |
 
 ### Hidden / dev
 
-| Command | Madmail source | chatmail-rs |
-|---------|----------------|-------------|
-| `generate-man` | `app.go` | `ctl/docs.rs` (embedded `docs/man/madmail.1.scd`) |
-| `generate-fish-completion` | `app.go` | `ctl/docs.rs` + `completion fish` |
-| `completion` | urfave bash completion | `completion {bash,zsh,fish}` |
-| `debug.pprof` flags | `maddy.go` (build tag) | **defer** |
+| Command | madmail-v2 |
+|---------|-------------|
+| `generate-man` | `docs.rs` (embedded `docs/man/madmail.1.scd`) |
+| `generate-fish-completion` | `docs.rs` |
+| `completion {bash,zsh,fish}` | `docs.rs` + [`completion.md`](../guide/cli/completion.md) |
 
 ---
 
@@ -127,94 +177,55 @@ Status legend: **done** · **planned** (TDD scope) · **defer** (post-MVP) · **
 
 | Layer | Location | Run |
 |-------|----------|-----|
-| CLI parse | `chatmail-config::cli` tests | `cargo test -p chatmail-config accounts_subcommands blocklist_subcommands` |
-| Unit + in-process dispatch | `chatmail::ctl::{accounts,ops_tests,...}` | `cargo test -p chatmail ctl` |
+| CLI parse | `chatmail-config::cli` tests | `cargo test -p chatmail-config` |
+| Unit + dispatch | `chatmail::ctl::{accounts,ops_tests,...}` | `cargo test -p chatmail ctl` |
 | E2E (subprocess) | `tests/ctl_cli_e2e.rs`, `tests/ctl_ops_e2e.rs` | `cargo test -p chatmail-integration --test ctl_cli_e2e --test ctl_ops_e2e` |
 
-`CtlContext::open_pool` creates `credentials.db` when missing so CLI works on a fresh `--state-dir` without a prior `run`.
+`CtlContext::open_pool` creates `chatmail.db` when missing so CLI works on a fresh `--state-dir` without a prior `run`.
 
 ---
 
-## Implementation phases
+## `internal/cli` file map (Madmail Go)
 
-Aligned with [`../plans/`](../plans/) and Admin API coverage:
-
-1. **Phase 1 (done):** `run`, global flags, `upgrade`, `version`, `admin-token`, `make push` / `sign`.
-2. **Phase 2 — ops:** `status`, `reload`, `hash`; improve `version` (git SHA). (`update` alias **done**.)
-3. **Phase 3 — accounts:** `accounts`, `creds`, `create-user`, `delete`, `ban-list` (direct SQLite; silent CLI per Madmail nolog policy).
-4. **Phase 4 — mailboxes:** `imap-acct`, `blocklist`, `registration-tokens`.
-5. **Phase 5 — policy:** `federation`, `sharing`, `endpoint-cache`, `port`, `submission-access` (`language` done).
-6. **Phase 6+:** `install` / `uninstall`, `imap-msgs`, `queue`, `exchanger`, HTML overrides.
-
-Where Admin API already implements a resource (`/admin/accounts`, `/admin/blocklist`, …), CLI commands should call the same logic in a shared library crate (e.g. `chatmail-admin` helpers) to avoid drift.
-
----
-
-## `internal/cli` file map
-
-| Go file | Top-level command(s) | Priority |
-|---------|----------------------|----------|
-| `app.go` | Registration, global flags, `run` hack | — |
-| `extflag.go` | Extended flag helpers | — |
-| `ctl/upgrade.go` | `upgrade`, `update` | P1 |
-| `ctl/admin_token.go` | `admin-token` | P1 ✓ |
-| `ctl/online.go` | `status` | P2 |
-| `ctl/reload_config.go` | `reload` | **done** |
-| `ctl/install.go` | `install` | P6 |
-| `ctl/uninstall.go` | `uninstall` | P6 |
-| `ctl/accounts_bulk.go` | `accounts` | P3 |
-| `ctl/accounts_direct.go` | `ban-list`, direct DB helpers | P3 |
-| `ctl/users.go` | `creds` | P3 |
-| `ctl/create_user.go` | `create-user` | P3 |
-| `ctl/delete.go` | `delete` | P3 |
-| `ctl/imapacct.go` | `imap-acct` | P4 |
-| `ctl/appendlimit.go` | (used by imap-acct) | P4 |
-| `ctl/blocklist.go` | `blocklist` | P4 |
-| `ctl/federation.go` | `federation` | P5 |
-| `ctl/sharing.go` | `sharing` | P5 |
-| `ctl/dnscache.go` | `endpoint-cache` | **done** |
-| `ctl/registration_token.go` | `registration-tokens` | P4 |
-| `ctl/port.go` | `port` | **done** |
-| `ctl/submission_access.go` | `submission-access` | P5 |
-| `ctl/language.go` | `language` | P5 |
-| `ctl/adminweb.go` | `admin-web` | P5 |
-| `ctl/exchanger.go` | `exchanger` | defer |
-| `ctl/queue.go` | `queue` | defer |
-| `ctl/imap.go` | `imap-mboxes`, `imap-msgs` | defer |
-| `ctl/html.go` | `html-export`, `html-serve` | **done** (config + runtime `www_dir`) |
-| `ctl/hash.go` | `hash` | P2 |
-| `ctl/dbconfig.go` | Shared DB open helpers | internal |
-| `ctl/moduleinit.go` | Module init (Go-only) | n/a |
-| `ctl/maddy.conf.j2` | Install template | P6 |
-| `ctl/dns.zone.j2` | Install DNS template | P6 |
-
----
-
-## Testing
-
-| Layer | Approach |
-|-------|----------|
-| Unit | `clap` parsing (`chatmail-config::cli` tests), `verify_signature` on fixture binary |
-| Integration | `chatmail upgrade` against temp signed file; `admin-token` with temp state dir |
-| E2E | Reuse Madmail scenarios in `context/madmail/tests/deltachat-test/scenarios/test_10_upgrade_mechanism.py` against chatmail binary |
+| Go file | Command(s) | Guide | Priority |
+|---------|------------|-------|----------|
+| `ctl/install.go` | `install` | [install.md](../guide/cli/install.md) | **done** |
+| `ctl/uninstall.go` | `uninstall` | [uninstall.md](../guide/cli/uninstall.md) | **done** |
+| `ctl/upgrade.go` | `upgrade`, `update` | [upgrade.md](../guide/cli/upgrade.md) | **done** |
+| `ctl/admin_token.go` | `admin-token` | [admin-token.md](../guide/cli/admin-token.md) | **done** |
+| `ctl/online.go` | `status` | [status.md](../guide/cli/status.md) | **done** |
+| `ctl/reload_config.go` | `reload` | [reload.md](../guide/cli/reload.md) | **done** |
+| `ctl/accounts_*.go` | `accounts`, `ban-list` | [accounts.md](../guide/cli/accounts.md) | **done** |
+| `ctl/blocklist.go` | `blocklist` | [blocklist.md](../guide/cli/blocklist.md) | **done** |
+| `ctl/federation.go` | `federation` | [federation.md](../guide/cli/federation.md) | **done** |
+| `ctl/dnscache.go` | `endpoint-cache` | [endpoint-cache.md](../guide/cli/endpoint-cache.md) | **done** |
+| `ctl/port.go` | `port` | [port.md](../guide/cli/port.md) | **done** |
+| `ctl/language.go` | `language` | [language.md](../guide/cli/language.md) | **done** |
+| `ctl/adminweb.go` | `admin-web` | [admin-web.md](../guide/cli/admin-web.md) | **done** |
+| `ctl/html.go` | `html-export`, `html-serve` | [html-export.md](../guide/cli/html-export.md) | **done** |
+| `ctl/users.go` | `creds` | [creds.md](../guide/cli/creds.md) | planned |
+| `ctl/hash.go` | `hash` | [hash.md](../guide/cli/hash.md) | planned |
+| `ctl/imapacct.go` | `imap-acct` | [imap-acct.md](../guide/cli/imap-acct.md) | planned |
+| `ctl/queue.go` | `queue` | [queue.md](../guide/cli/queue.md) | defer |
+| `ctl/exchanger.go` | `exchanger` | [exchanger.md](../guide/cli/exchanger.md) | defer |
 
 ---
 
 ## Deviations from Madmail
 
-- Binary name **`chatmail`** in development; production test servers still invoke **`madmail`** path and unit name derived from basename (`madmail.service`).
-- **`upgrade` / `update`:** `http(s)://` download (100 MB cap, TLS verify skipped for self-signed peers), then same signed replace flow as Madmail.
-- **`install`** will likely remain a shell/Makefile wrapper around `chatmail install` once ported, reusing `maddy.conf.j2` generation logic in Rust or templating.
+- Binary name **`chatmail`** in development; production installs use **`madmail`** (`cli.rs` `name = "madmail"`).
+- **`--json`** on all ctl commands (see [`json-output.md`](../guide/cli/json-output.md)).
+- **`upgrade` / `update`:** HTTP(S) download (100 MB cap), then signed replace.
+- **`certificate autocert`:** writes `tls_mode autocert` + `acme_email` to config; optional immediate `get` ([`certificate-autocert-enable.md`](../guide/cli/certificate-autocert-enable.md)).
+- **`federation dismiss`:** silent-dismiss cache (`chatmail-state::silent_dismiss`) — extra vs base Madmail CLI surface.
 
 ## Related RFCs
-
-CLI commands configure and operate protocol endpoints defined by these specs. Full library: [`RFC/README.md`](RFC/README.md).
 
 | RFC | Topic | Local file |
 |-----|-------|------------|
 | [8555](https://datatracker.ietf.org/doc/html/rfc8555) | `certificate get` / ACME | [rfc8555.txt](RFC/rfc8555.txt) |
-| [8446](https://datatracker.ietf.org/doc/html/rfc8446) | `certificate`, TLS material | [rfc8446.txt](RFC/rfc8446.txt) |
-| [5321](https://datatracker.ietf.org/doc/html/rfc5321) | SMTP-related ctl (ports, queue) | [rfc5321.txt](RFC/rfc5321.txt) |
-| [3501](https://datatracker.ietf.org/doc/html/rfc3501) | IMAP-related ctl | [rfc3501.txt](RFC/rfc3501.txt) |
+| [8446](https://datatracker.ietf.org/doc/html/rfc8446) | TLS material | [rfc8446.txt](RFC/rfc8446.txt) |
+| [5321](https://datatracker.ietf.org/doc/html/rfc5321) | SMTP ctl (ports, queue) | [rfc5321.txt](RFC/rfc5321.txt) |
+| [3501](https://datatracker.ietf.org/doc/html/rfc3501) | IMAP ctl | [rfc3501.txt](RFC/rfc3501.txt) |
 
-See also section-specific RFC tables: [02-smtp-server.md](02-smtp-server.md), [03-imap-server.md](03-imap-server.md), [19-certificates.md](19-certificates.md).
+See also: [02-smtp-server.md](02-smtp-server.md), [03-imap-server.md](03-imap-server.md), [19-certificates.md](19-certificates.md).

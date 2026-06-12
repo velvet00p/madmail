@@ -6,6 +6,7 @@
 	import DocTreeModal from '$lib/components/DocTreeModal.svelte';
 	import SiteMeta from '$lib/components/SiteMeta.svelte';
 	import { docTreeModal } from '$lib/docTreeModal.svelte.js';
+	import madmailLogoUrl from '$lib/logoUrl.js';
 	import { madMode } from '$lib/madMode.svelte.js';
 	import { theme } from '$lib/theme.svelte.js';
 	import '$lib/styles/global.css';
@@ -67,6 +68,7 @@
 <SiteMeta />
 
 <svelte:head>
+	<link rel="preload" href={madmailLogoUrl} as="image" type="image/png" fetchpriority="high" />
 	<link rel="icon" href="/favicon.ico" sizes="any" />
 	<link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
 	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />

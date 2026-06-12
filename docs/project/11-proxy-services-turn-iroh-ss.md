@@ -1,6 +1,6 @@
 # 11 — Proxy & Sidecar Services (TURN, Iroh, Shadowsocks)
 
-One of the things that makes a modern chatmail server special is that it ships with the auxiliary services that Delta Chat needs for real-time and p2p features.
+A chatmail server can bundle the auxiliary services that Delta Chat uses for real-time and p2p features.
 
 These run in the same process (or as supervised children) and are configured via the same mechanisms as the mail protocols.
 
@@ -99,7 +99,7 @@ All three services follow the same pattern:
 
 - **Operational simplicity** — one binary, one service file, one set of TLS certs, one admin UI.
 - **Trust & privacy** — the same operator who hosts the encrypted mail also hosts the TURN/Iroh relay. No need to send ICE credentials to a third-party service.
-- **Discovery** — IMAP METADATA is already authenticated and encrypted (over TLS + login). Perfect channel for distributing the relay endpoints and secrets.
+- **Discovery** — IMAP METADATA is already authenticated and encrypted (over TLS + login). A suitable channel for distributing relay endpoints and secrets.
 - **Testing** — E2E tests can stand up the full stack (mail + TURN + Iroh) in one process or one container.
 
 ## Trade-offs

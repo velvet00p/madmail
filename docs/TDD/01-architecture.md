@@ -42,16 +42,16 @@ Integration tests live in workspace member `tests/` (`chatmail-integration` pack
 |-------|------|------------------------------|
 | **`chatmail`** | Process entry: `main` → `boot::run` or `ctl::dispatch` | `boot`, `supervisor`, `servers`, `ctl/*`, `turn_boot`, `iroh_boot`, `ss_boot` |
 | **`chatmail-types`** | Shared errors and domain helpers | `error`, `domains` |
-| **`chatmail-config`** | `maddy.conf` AST, `AppConfig`, CLI (`clap`) | `maddy`, `parse`, `cli`, `install_cli`, `credential_policy` |
-| **`chatmail-db`** | SQLx pool, migrations, settings, accounts | `pool`, `settings`, `passwords`, `blocklist`, `endpoint_cache`, `federation_policy`, `message_stats`, `maintenance` |
-| **`chatmail-state`** | In-memory hot path hydrated at boot | `AppState`, `quota`, `policy`, `tracker`, `flusher`, `events`, `message_size`, `silent_dismiss` |
-| **`chatmail-storage`** | Maildir on disk | `maildir`, `maildir_message`, `purge`, `inbox` |
+| **`chatmail-config`** | `maddy.conf` AST, `AppConfig`, CLI (`clap`) | `maddy`, `madmail_parse`, `parse`, `cli`, `install_cli`, `credential_policy`, `queue`, `data_size`, `client_mail`, `autoconfig`, `paths`, `db_path` |
+| **`chatmail-db`** | SQLx pool, migrations, settings, accounts | `pool`, `settings`, `passwords`, `blocklist`, `endpoint_cache`, `federation_policy`, `message_stats`, `message_retention`, `maintenance`, `mail_ports`, `modseq`, `inbound`, `sharing` |
+| **`chatmail-state`** | In-memory hot path hydrated at boot | `AppState`, `auth`, `quota`, `policy`, `tracker`, `flusher`, `events`, `message_size`, `silent_dismiss`, `listener_ports`, `reload`, `mailbox_store` (with `StoragePolicy`) |
+| **`chatmail-storage`** | Maildir + CAS blobs on disk | `maildir`, `blob`, `cas`, `external_store`, `storage_policy`, `uidlist`, `maildir_cache`, `fsync_batch`, `delivery_batch`, `maildir_message`, `purge`, `inbox` |
 | **`chatmail-auth`** | Login, JIT, password hashing | `jit`, `hash`, `validate` |
 | **`chatmail-pgp`** | PGP-only policy gate | `enforce_encryption` (SMTP DATA, APPEND, `/mxdeliv`) |
 | **`chatmail-smtp`** | Async SMTP listener + sessions | `server`, `session`, `protocol` |
 | **`chatmail-imap`** | Async IMAP listener + IDLE | `server`, `session`, `connection_stats` |
 | **`chatmail-fed`** | HTTP listener: `/mxdeliv` + merged routers | `mxdeliv`, `server::run_http_listener` |
-| **`chatmail-delivery`** | Outbound queue (HTTP then SMTP) | `queue`, `router`, `transport` |
+| **`chatmail-delivery`** | Outbound queue (HTTP then SMTP) | `queue`, `router`, `transport`, `federation_http` (shared `reqwest` client) |
 | **`chatmail-push`** | XDELTAPUSH device tokens + `notifications.delta.chat` notifier | `notifier`, `store`, `mode`, `stats` — [23-push-notifications.md](23-push-notifications.md) |
 | **`chatmail-www`** | Public site, `/new`, WebIMAP/WebSMTP | `router`, `webimap`, `webimap_ws`, `handlers` |
 | **`chatmail-admin`** | Admin JSON-RPC (`POST /api/admin`) | `resources::*`, `router` |
@@ -61,7 +61,7 @@ Integration tests live in workspace member `tests/` (`chatmail-integration` pack
 | **`chatmail-turn`** | In-process TURN/STUN (`webrtc-rs`) | `runner`, `credentials`, `turn_allocate` |
 | **`chatmail-iroh`** | Supervise embedded `iroh-relay` | `runner`, `discovery` |
 | **`chatmail-shadowsocks`** | Optional camouflage proxy | `server`, `allowed_ports` |
-| **`chatmail-tasks`** | Scheduled maintenance jobs | `scheduler`, `jobs`, `config` |
+| **`chatmail-tasks`** | Scheduled maintenance + autocert renewal | `scheduler`, `jobs`, `config`, `cert_renew` |
 | **`chatmail-metrics`** | Prometheus OpenMetrics exporter | `metrics`, `server` |
 
 ### Runtime wiring
@@ -74,7 +74,7 @@ Integration tests live in workspace member `tests/` (`chatmail-integration` pack
 4. **IMAP** (`chatmail-imap`) — plain/TLS; METADATA for TURN/Iroh discovery and `XDELTAPUSH` device tokens.
 5. **Outbound** (`chatmail-delivery::start_outbound_queue`) — persistent queue + transport.
 6. **Proxies** — `turn_boot`, `iroh_boot`, `ss_boot` when enabled in settings/CLI.
-7. **Maintenance** (`chatmail-tasks::spawn_maintenance_scheduler`) — retention, dormant accounts, etc.
+7. **Maintenance** (`chatmail-tasks::spawn_maintenance_scheduler`) — retention, dormant accounts, auto-purge seen, daily autocert renewal when `tls_mode = autocert`.
 8. **Metrics** (`chatmail-metrics`) — optional OpenMetrics listener.
 
 Reload: admin `POST /admin/reload` or signal path recreates listeners with updated ports/TLS from DB + config (`supervisor.rs`).
@@ -92,7 +92,7 @@ Reload: admin `POST /admin/reload` or signal path recreates listeners with updat
 | [10-webimap.md](10-webimap.md) | `chatmail-www` |
 | [11-proxy-services.md](11-proxy-services.md) | `chatmail-turn`, `chatmail-iroh`, `chatmail-shadowsocks` |
 | [13-configuration.md](13-configuration.md) | `chatmail-config`, `chatmail-db` |
-| [14-cli-tools.md](14-cli-tools.md) | `chatmail`, `chatmail-config` |
+| [14-cli-tools.md](14-cli-tools.md) | `chatmail`, `chatmail-config` — operator usage: [`../guide/cli/`](../guide/cli/README.md) |
 | [16-testing.md](16-testing.md) | `tests/` + per-crate `tests/` (e.g. `chatmail-turn`) |
 | [17-data-models.md](17-data-models.md) | `chatmail-db/migrations/` |
 | [19-certificates.md](19-certificates.md) | `chatmail-acme`, `chatmail-tls` |
@@ -105,7 +105,7 @@ Normative protocol specs used across these crates are archived under [`RFC/`](RF
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        chatmail-rs                               │
+│                        madmail-v2                               │
 ├─────────────────────────────────────────────────────────────────┤
 │  HTTP Server (Axum)                                            │
 │   ├── /new                  (Registration)                     │
@@ -139,11 +139,11 @@ Normative protocol specs used across these crates are archived under [`RFC/`](RF
 
 | Layer              | Technology                          | Rationale |
 |--------------------|-------------------------------------|---------|
-| Async Runtime      | Tokio + tracing                     | Industry standard |
-| HTTP + WebSocket   | Axum + tower                        | Excellent ergonomics, WebSocket support |
+| Async Runtime      | Tokio + tracing                     | Widely used in Rust servers |
+| HTTP + WebSocket   | Axum + tower                        | WebSocket support; familiar Rust HTTP stack |
 | TLS                | rustls + tokio-rustls               | Memory safe, modern |
 | Database           | SQLx (compile-time checked) or Diesel | Async friendly |
-| SMTP Server        | Study `context/stalwart/crates/smtp` + `smtp-proto`; implement Chatmail-specific inbound/submission | Stalwart is full MTA; chatmail-rs needs PGP + federation + JIT |
+| SMTP Server        | Study `context/stalwart/crates/smtp` + `smtp-proto`; implement Chatmail-specific inbound/submission | Stalwart is full MTA; madmail-v2 needs PGP + federation + JIT |
 | IMAP Server        | Study `context/stalwart/crates/{imap,imap-proto}`; custom backend on mail storage | Protocol split in Stalwart matches recommended design |
 | Config             | `config` + hot-reload via DB        | Dynamic settings |
 | CLI                | `clap` + `dialoguer`                | Interactive install |
@@ -213,15 +213,17 @@ All modifications are **write-through** (DB + RAM) under lock.
 ## Single Binary Layout
 
 ```
-chatmail                    # workspace package + binary name
-├── chatmail run           # default: full server (boot + supervisor)
-├── chatmail install       # interactive install (chatmail-config::install_cli)
-├── chatmail ctl …         # accounts, blocklist, certificate, tasks, …
+madmail                     # clap name in production; dev crate: chatmail
+├── madmail run            # default: full server (boot + supervisor)
+├── madmail install        # chatmail-config::install_cli
+├── madmail <subcommand>   # accounts, federation, certificate, tasks, …
 ├── systemd unit template
 └── embedded assets (chatmail-www www-src, chatmail-admin-web SPA)
 ```
 
-This matches Madmail's philosophy of simple deployment. The product is still referred to as **chatmail-rs** in design docs; the executable and crate name are **`chatmail`**.
+Operator reference (per-command): [`../guide/cli/README.md`](../guide/cli/README.md). Design parity matrix: [14-cli-tools.md](14-cli-tools.md).
+
+This matches Madmail's philosophy of simple deployment. The product is still referred to as **madmail-v2** in design docs; the workspace crate is **`chatmail`**, the shipped binary name is **`madmail`**.
 
 ## Implementation references
 

@@ -2,6 +2,8 @@
 
 Madmail-compatible HTTP + WebSocket mail access for web clients and bots. Operator reference: [`context/madmail/docs/chatmail/webimap.md`](../../context/madmail/docs/chatmail/webimap.md). Implementation: `crates/chatmail-www/` (`webimap.rs`, `webimap_ws.rs`, `handlers.rs`).
 
+**Operator CLI:** [`../guide/cli/webimap.md`](../guide/cli/webimap.md) · [`websmtp.md`](../guide/cli/websmtp.md) · [`html-serve.md`](../guide/cli/html-serve.md).
+
 ## Feature toggles
 
 Both services are **disabled by default** (Madmail parity). Runtime keys in the settings DB / `passwords` KV:

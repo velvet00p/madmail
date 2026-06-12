@@ -257,6 +257,7 @@ Port service aliases: `submission_tls` → `submission-tls`, `imap_tls` → `ima
 
 - [Native install guide](../install.md)
 - [Docker guide](../docker.md)
-- [CLI tools (TDD)](../../TDD/14-cli-tools.md)
+- [CLI tools (TDD)](../../TDD/14-cli-tools.md) — implementation parity, `ctl/` module map, Madmail Go references
+- [TDD index](../../TDD/README.md) — architecture and crate map
 
 [Source: `crates/chatmail-config/src/cli.rs`](https://github.com/themadorg/madmail/blob/main/crates/chatmail-config/src/cli.rs)

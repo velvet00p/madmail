@@ -1,6 +1,6 @@
 <script>
 	import { activateMadMode } from '$lib/madMode.svelte.js';
-	import logo from '$lib/assets/madmail_logo.png';
+	import logo from '$lib/logoUrl.js';
 
 	/** @type {{ size?: string, class?: string, alt?: string, interactive?: boolean, href?: string, transitionName?: string }} */
 	let {
@@ -16,6 +16,8 @@
 		transitionName ? `view-transition-name: ${transitionName};` : ''
 	);
 
+	const logoImageStyle = $derived(`--mad-logo-image: url("${logo}");`);
+
 	function handleClick() {
 		activateMadMode();
 	}
@@ -23,18 +25,17 @@
 
 {#snippet logoMarkup(showAlt)}
 	<div class="mad-logo__glitch" aria-hidden="true">
-		<img src={logo} alt="" class="mad-logo__layer mad-logo__layer--base" />
-		<img src={logo} alt="" class="mad-logo__layer mad-logo__layer--red" />
-		<img src={logo} alt="" class="mad-logo__layer mad-logo__layer--cyan" />
+		<div class="mad-logo__layer mad-logo__layer--red"></div>
+		<div class="mad-logo__layer mad-logo__layer--cyan"></div>
 	</div>
-	<img src={logo} alt={showAlt ? alt : ''} class="mad-logo__main" draggable="false" />
+	<div class="mad-logo__main" aria-hidden={showAlt ? undefined : true}></div>
 {/snippet}
 
 {#if href}
 	<a
 		{href}
 		class="mad-logo mad-logo--link {className}"
-		style="--mad-logo-size: {size}; {transitionStyle}"
+		style="--mad-logo-size: {size}; {logoImageStyle} {transitionStyle}"
 		aria-label={alt}
 	>
 		{@render logoMarkup(false)}
@@ -43,14 +44,19 @@
 	<button
 		type="button"
 		class="mad-logo mad-logo--interactive {className}"
-		style="--mad-logo-size: {size}; {transitionStyle}"
+		style="--mad-logo-size: {size}; {logoImageStyle} {transitionStyle}"
 		aria-label={alt}
 		onclick={handleClick}
 	>
 		{@render logoMarkup(false)}
 	</button>
 {:else}
-	<div class="mad-logo {className}" style="--mad-logo-size: {size}; {transitionStyle}">
+	<div
+		class="mad-logo {className}"
+		style="--mad-logo-size: {size}; {logoImageStyle} {transitionStyle}"
+		role="img"
+		aria-label={alt}
+	>
 		{@render logoMarkup(true)}
 	</div>
 {/if}
@@ -92,7 +98,10 @@
 	.mad-logo__main {
 		width: 100%;
 		height: 100%;
-		object-fit: contain;
+		background-image: var(--mad-logo-image);
+		background-repeat: no-repeat;
+		background-position: center;
+		background-size: contain;
 		user-select: none;
 		-webkit-user-drag: none;
 	}
@@ -100,10 +109,6 @@
 	.mad-logo__layer {
 		position: absolute;
 		inset: 0;
-	}
-
-	.mad-logo__layer--base {
-		opacity: 0;
 	}
 
 	.mad-logo__layer--red {

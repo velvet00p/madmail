@@ -1,6 +1,6 @@
 # Quick Start: Running a Chatmail Server
 
-This guide gives you the fastest realistic paths to a working chatmail server, from completely local testing to a proper public server.
+This guide walks through practical paths to a working chatmail server, from completely local testing to a public deployment.
 
 ## Quick Setup
 
@@ -58,17 +58,17 @@ More detail:
 
 ## Local Testing (for Operators)
 
-If you just want to test the server locally as an operator (without building from source), the easiest approach is usually to use a pre-built release binary or run it via the official install process in a container/VM.
+If you just want to test the server locally as an operator (without building from source), a typical approach is to use a pre-built release binary or run it via the official install process in a container/VM.
 
 Detailed instructions for **developers** who are building, modifying, and testing the source code locally (Rust, `make restart`, ports for Delta Chat desktop, etc.) live in the developer documentation:
 
 → **[Local Development Workflow](../15-development-workflow.md)**
 
-That guide covers the full edit → build → test loop used by people working on the chatmail-rs code.
+That guide covers the full edit → build → test loop used by people working on the madmail-v2 code.
 
-## Fastest Way to Get the Binary (Pre-built Releases)
+## Getting a Pre-built Binary (Releases)
 
-For the quickest way to obtain a ready-to-use binary without compiling:
+To obtain a ready-to-use binary without compiling:
 
 1. Go to the releases page:  
    **https://github.com/themadorg/madmail/releases**
@@ -103,13 +103,13 @@ sudo madmail upgrade <path-or-url>
   5. Atomically replaces the running binary.
   6. Restarts the service(s).
 
-This is the recommended way to update a production server safely.
+This is the supported way to update a production server with signature verification.
 
 The same signed binaries from https://github.com/themadorg/madmail/releases can be used with `madmail upgrade`.
 
-## Option 1: Public Server on a Real IP (Recommended for Production)
+## Option 1: Public Server on a Real IP
 
-This is the simplest supported production path for a full installation (including systemd service, user, directories, and certificate).
+This path installs a full production setup (systemd service, user, directories, and certificate).
 
 See the dedicated short guide:
 
@@ -251,7 +251,7 @@ Example:
 https://your-server.example.com/madmail
 ```
 
-This is very convenient for bootstrapping or updating other servers.
+This can simplify bootstrapping or updating other servers.
 
 **Best practice for initial installation:**
 
@@ -287,7 +287,7 @@ https://your-server.example.com/docs/
 
 This documentation is available in multiple languages and includes practical guides for users and operators, including a guide on customizing the web interface and HTML pages.
 
-This is extremely useful when setting up a new server or helping users — they can read the documentation directly from the server itself without needing external internet access.
+This helps when setting up a new server or helping users — they can read documentation from the server itself without external internet access.
 
 ## Customizing the Web Interface and HTML Pages
 

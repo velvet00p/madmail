@@ -4,7 +4,7 @@ Once your chatmail server is running, you will spend most of your time in the ad
 
 There are two main ways to manage a server:
 
-1. The web admin dashboard (recommended for most day-to-day work)
+1. The web admin dashboard (common choice for day-to-day work)
 2. The `madmail` command-line tool
 
 Both talk to the same underlying system.
@@ -13,7 +13,7 @@ One particularly useful CLI command for production servers is `madmail upgrade` 
 
 ## The Web Admin Dashboard
 
-This is the most user-friendly way to manage the server.
+This is the graphical way to manage the server.
 
 ### Accessing It
 
@@ -54,11 +54,11 @@ This is the same SvelteKit SPA from the [madmail-admin-web](https://github.com/t
 
 You simply enter your server’s admin API URL (for example `https://your-server/api/admin` or your custom path) and your admin token. The panel connects directly to *your* server — your data never leaves your instance.
 
-This is especially convenient for managing your server from any device or when running a minimal installation without the embedded UI.
+This is useful for managing your server from any device or when running a minimal installation without the embedded UI.
 
 ### Managing the Admin Web via CLI
 
-The admin web interface is controlled through simple CLI commands. This is the recommended way to enable or customize it.
+The admin web interface is controlled through simple CLI commands. Use these commands to enable or customize it.
 
 ```bash
 # See current status
@@ -219,7 +219,7 @@ For the complete list of subcommands and flags, run `madmail --help`.
 
 - Use the **web interface** for exploration and occasional tasks.
 - Use the **CLI** for scripting, automation, or when you only have SSH access.
-- Both are equally powerful. The web UI is basically a nice frontend over the same admin API that the CLI uses.
+- Both expose the same admin API. The web UI is a browser frontend; the CLI calls the same resources directly or via equivalent DB operations.
 
 ## The Admin API (How Everything Works)
 
@@ -320,7 +320,7 @@ On any public-facing server, **change both paths**:
   madmail reload
   ```
 
-- **Admin Web path**: Use the CLI (this is the easiest way):
+- **Admin Web path**: Use the CLI:
   ```bash
   madmail admin-web path /admin-panel-abc987
   madmail reload

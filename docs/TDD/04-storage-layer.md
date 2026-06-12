@@ -1,6 +1,6 @@
 # Storage Layer – High Throughput Design
 
-**Implementation:** on-disk mail — `crates/chatmail-storage` (Maildir under `{state_dir}/mail/`). Hot caches and flush — `crates/chatmail-state` (`quota`, `tracker`, `policy`, `flusher`). Persistence — `crates/chatmail-db` (settings, stats, policy rows; not message bodies).
+**Implementation:** on-disk mail — `crates/chatmail-storage` (Maildir + optional CAS blobs under `{state_dir}/mail/` and `{state_dir}/blobs/`). Hot caches and flush — `crates/chatmail-state` (`quota`, `tracker`, `policy`, `flusher`, `MailboxStore` wired with `StoragePolicy`). Persistence — `crates/chatmail-db` (settings, stats, policy rows; not message bodies).
 
 ## Design Goals for High Throughput
 
@@ -12,33 +12,68 @@
 
 ## 1. Mail Storage (Filesystem-based)
 
-### Recommended Layout (Maildir + Symlinks style)
+### On-disk layout (`chatmail-storage`)
 
 ```
-{var}/mail/
-├── {user_hash}/
-│   ├── Maildir/
-│   │   ├── cur/
-│   │   ├── new/
-│   │   └── tmp/
-│   ├── index/               # Optional fast index (SQLite per user or shared)
-│   └── quota
-└── symlinks/                # For efficient folder sharing / virtual mailboxes
-    └── {folder_id} -> ../../{user_hash}/Maildir/...
+{state_dir}/
+├── mail/{user}/Maildir/
+│   ├── cur/                 # seen messages
+│   ├── new/                 # unseen messages
+│   ├── tmp/                 # atomic writes + uidlist staging
+│   └── chatmail-uidlist     # persistent UID index (Dovecot uidlist parity)
+├── blobs/{hh}/{sha256}      # content-addressed payloads (when blob_dedup on)
+├── remote_queue/            # outbound federation retry queue (chatmail-delivery)
+└── pending_notifications/   # disk-backed push notify jobs (chatmail-push)
 ```
+
+Per-user mailboxes may also use subfolders (e.g. `folders/DeltaChat/cur|new|tmp`) for IMAP `LIST` / MVBOX.
 
 **Why this model?**
-- Extremely fast appends (just write file + fsync or rename).
-- Excellent cacheability by OS page cache.
-- Easy to implement `fsync`, quota checks via `du` or inode tracking.
-- Compatible with existing Dovecot-style tools and migration paths.
+- Fast appends (write file + optional fsync, or hardlink from CAS).
+- Good cacheability via the OS page cache.
+- `mail_fsync` / `blob_dedup` tunables match Dovecot relay throughput knobs.
+- Multi-recipient fan-out can **link** one canonical blob instead of copying bytes.
 - Message bodies are **never** stored in the main SQL database.
 
-### Message Metadata
-Only lightweight metadata is kept in the central database / in-memory cache:
-- UID, flags, size, date, mailbox
-- Message-ID (for threading)
-- Internal message pointer (path on disk)
+### `chatmail-storage` modules
+
+| Module | Role |
+|--------|------|
+| `maildir` | `MailboxStore` — paths, policy, listing cache, uidlist, CAS, fsync coordinator |
+| `blob` | Delivery (`deliver_local_messages`), APPEND streaming, multi-recipient link |
+| `cas` | `ContentStore` — SHA-256 dedup under `{state_dir}/blobs/` |
+| `external_store` | `ExternalStore` trait + `FsStore` default (Madmail `ExternalStore` seam) |
+| `storage_policy` | `FsyncMode` (`always` / `optimized` / `never`) + `StoragePolicy` |
+| `uidlist` | Stable IMAP UIDs via `chatmail-uidlist` (no renumbering on delete) |
+| `maildir_cache` | `MaildirListCache` — skip `readdir` when `new/` + `cur/` mtimes unchanged |
+| `fsync_batch` | Coalesce directory fsyncs under `mail_fsync = optimized` |
+| `delivery_batch` | Per-mailbox coordinator for `mail_fsync = never` high-concurrency path |
+| `maildir_message` | Flags, list, move, copy, expunge |
+| `purge` | Retention / seen / unread purge helpers (`chatmail-tasks`) |
+| `inbox` | Inbox listing helper |
+
+`AppState` constructs `MailboxStore::with_policy(StoragePolicy::from_config(mail_fsync, blob_dedup))` at boot (`chatmail-state`).
+
+### Storage policy (`mail_fsync`, `blob_dedup`)
+
+Parsed from `storage.imapsql` in `maddy.conf` (see [`13-configuration.md`](13-configuration.md)):
+
+| `mail_fsync` | Behaviour |
+|--------------|-----------|
+| `always` (default) | `sync_data` + directory fsync on every write |
+| `optimized` | Per-file fsync; directory fsyncs batched via `FsyncCoordinator` |
+| `never` | Skip fsync (relay throughput); uses `DeliveryBatcher` to serialize visibility steps per mailbox |
+
+| `blob_dedup` | Behaviour |
+|--------------|-----------|
+| `on` (default) | Identical payloads stored once in `blobs/`; maildir entries hardlink |
+| `off` | Every message written as a distinct maildir file |
+
+Large APPEND bodies (≥ 64 KiB) stream socket → `tmp/` instead of buffering in RAM. PGP policy scans the first 64 KiB during streaming (`cas::HEADER_SCAN_PREFIX`).
+
+### Message metadata
+
+UID, flags, size, and internal date are cached in `chatmail-uidlist` on disk and in `MaildirListCache` in RAM. The SQL database holds only account/quota/policy rows — not per-message indexes (Madmail go-imap-sql `msgs` table is **not** replicated).
 
 ## 2. In-Memory Hot Data Architecture
 
@@ -81,7 +116,7 @@ This allows very fast user provisioning under high load.
 - A background flusher task runs every **30 seconds** (or configurable) and does batch UPSERTs to the database.
 - On graceful shutdown, force flush everything.
 
-This pattern dramatically reduces database write pressure.
+This pattern reduces database write pressure compared with per-message SQL writes.
 
 ## 3. Database Role (Reduced)
 
@@ -114,20 +149,22 @@ The SQL database (SQLite or PostgreSQL) is used for:
 - Implement a `PersistenceManager` actor/task that handles periodic flushing.
 - On startup, have a clear "hydration" phase with progress logging.
 
-This design moves the system much closer to how high-performance mail servers (Postfix + Dovecot) operate while keeping the rich admin/federation features of Chatmail.
+This design follows patterns used by traditional mail stacks (Postfix + Dovecot) while keeping chatmail's admin and federation features.
 
 ## Implementation references
 
 Index: [`CONTEXT.md`](CONTEXT.md).
 
-| Concern | madmail | cmrelay | cmdeploy | stalwart |
-|---------|---------|---------|----------|----------|
-| Maildir / filesystem store | [`go-imap-sql/fsstore.go`](../../context/madmail/internal/go-imap-sql/fsstore.go), [`external_store.go`](../../context/madmail/internal/go-imap-sql/external_store.go) | Dovecot maildir (deployed) | [`dovecot.conf.j2`](../../context/cmdeploy/src/cmdeploy/dovecot/dovecot.conf.j2) | [`crates/email/src/message/`](../../context/stalwart/crates/email/src/message/) |
-| Delivery → mailbox | [`go-imap-sql/delivery.go`](../../context/madmail/internal/go-imap-sql/delivery.go), [`storage/imapsql/delivery.go`](../../context/madmail/internal/storage/imapsql/delivery.go) | [`inbound.rs`](../../context/cmrelay/src/filtermail/src/inbound.rs) | LMTP path in Dovecot template | [`crates/email/src/message/delivery.rs`](../../context/stalwart/crates/email/src/message/delivery.rs) |
-| In-memory quota | [`internal/quota/cache.go`](../../context/madmail/internal/quota/cache.go) | — | Dovecot `quota` plugin in template | [`crates/smtp/src/queue/quota.rs`](../../context/stalwart/crates/smtp/src/queue/quota.rs) |
-| Federation rules RAM | [`federationtracker/`](../../context/madmail/internal/federationtracker/) | — | — | — |
-| Endpoint cache | [`endpoint_cache/`](../../context/madmail/internal/endpoint_cache/) | — | — | — |
-| DB models | [`internal/db/models.go`](../../context/madmail/internal/db/models.go) | [`migrate_db.py`](../../context/cmrelay/src/filtermail/python/chatmaild/migrate_db.py) | — | [`crates/store/`](../../context/stalwart/crates/store/) |
+| Concern | madmail-v2 | madmail | cmrelay | cmdeploy | stalwart |
+|---------|-------------|---------|---------|----------|----------|
+| Maildir / blob store | `crates/chatmail-storage/` (`blob`, `cas`, `external_store`) | [`fsstore.go`](../../context/madmail/internal/go-imap-sql/fsstore.go), [`external_store.go`](../../context/madmail/internal/go-imap-sql/external_store.go) | Dovecot maildir | [`dovecot.conf.j2`](../../context/cmdeploy/src/cmdeploy/dovecot/dovecot.conf.j2) | [`crates/email/src/message/`](../../context/stalwart/crates/email/src/message/) |
+| Delivery → mailbox | `blob::deliver_local_messages` | [`delivery.go`](../../context/madmail/internal/go-imap-sql/delivery.go) | [`inbound.rs`](../../context/cmrelay/src/filtermail/src/inbound.rs) | LMTP | [`delivery.rs`](../../context/stalwart/crates/email/src/message/delivery.rs) |
+| UID stability | `uidlist::UidListStore` | go-imap-sql positional UIDs | Dovecot uidlist | Dovecot uidlist | — |
+| `mail_fsync` / dedup | `storage_policy`, `fsync_batch`, `delivery_batch` | — | Dovecot `mail_fsync` | Dovecot config | CAS store |
+| In-memory quota | `chatmail-state::quota` | [`quota/cache.go`](../../context/madmail/internal/quota/cache.go) | — | Dovecot `quota` plugin | [`queue/quota.rs`](../../context/stalwart/crates/smtp/src/queue/quota.rs) |
+| Federation rules RAM | `chatmail-state::policy` | [`federationtracker/`](../../context/madmail/internal/federationtracker/) | — | — | — |
+| Endpoint cache | `chatmail-db::endpoint_cache` | [`endpoint_cache/`](../../context/madmail/internal/endpoint_cache/) | — | — | — |
+| DB models | `chatmail-db/migrations/` | [`models.go`](../../context/madmail/internal/db/models.go) | [`migrate_db.py`](../../context/cmrelay/src/filtermail/python/chatmaild/migrate_db.py) | — | [`crates/store/`](../../context/stalwart/crates/store/) |
 
 ## Related RFCs
 

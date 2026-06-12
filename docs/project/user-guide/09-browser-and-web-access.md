@@ -46,7 +46,7 @@ They can generate a link or QR code that other people can open in their browser 
 
 After someone opens the link and creates an account (or logs in), the two sides can securely connect.
 
-This feature is especially popular with people who run public or semi-public servers and want an easy onboarding method.
+This feature is often used on public or semi-public servers that want a simple onboarding flow.
 
 ## Invite Links (`/inv/`)
 

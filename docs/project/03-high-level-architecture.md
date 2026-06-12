@@ -168,4 +168,4 @@ You now have the mental model.
 - For the **exact boot code path** → [05-boot-sequence-and-state.md](./05-boot-sequence-and-state.md)
 - For **data flow deep dives** (registration, send mail, federation) → the later numbered docs + `docs/TDD/`
 
-The TDD/01-architecture.md is also excellent and complements this view.
+The TDD/01-architecture.md covers the same material with more crate-level detail.

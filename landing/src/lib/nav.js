@@ -4,6 +4,11 @@ export const docPages = [
 	{ label: 'Documentation', href: '/docs' }
 ];
 
+export const heroNav = [
+	...docPages,
+	{ label: 'Madmail Admin', href: 'https://admin.madmail.chat' }
+];
+
 export const docNav = docPages;
 
 /** @param {string} href */

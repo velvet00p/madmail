@@ -1,6 +1,6 @@
 # User & Operator Guide
 
-Welcome! This section contains practical, human-friendly documentation for running and using a **chatmail** server (the Rust implementation in this project, also known as madmailv2).
+This section documents running and operating a **chatmail** relay (the Rust **madmail-v2** implementation in this project).
 
 It is written in the same spirit as the original Madmail "chatmail" documentation — clear explanations for normal users and semi-technical operators, focused on what you actually need to know and do.
 
@@ -40,13 +40,13 @@ It is written in the same spirit as the original Madmail "chatmail" documentatio
 
 - This **user-guide** series = friendly, practical, "how do I...".
 - `docs/project/` (the numbered 01–17 series) = deep technical understanding of the code and architecture (for developers).
-- `docs/TDD/` = authoritative design decisions (for people who want the "why" at a system level).
+- `docs/TDD/` = design decisions (for people who want the "why" at a system level).
 - `docs/local-dev.md` and `docs/install-simple-ip-acme.md` = short, task-focused cheat sheets.
-- The actual server itself serves nice HTML versions of documentation at `https://your-server/docs/` (multi-language).
+- The server also serves HTML documentation at `https://your-server/docs/` (multi-language).
 
 ## Contributing
 
-If you run a server and notice something missing, confusing, or that could be explained better for normal humans, please improve these guides. They are meant to be living, operator-friendly documentation.
+If you run a server and notice something missing, confusing, or that could be explained better, please improve these guides. They are meant to be practical documentation for operators.
 
 Start with the most important file for new people: **[01-what-is-chatmail.md](./01-what-is-chatmail.md)**
 

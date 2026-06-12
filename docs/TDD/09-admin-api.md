@@ -2,6 +2,8 @@
 
 Madmail-compatible JSON-RPC admin API. Full operator reference: [`context/madmail/docs/chatmail/admin_api.md`](../../context/madmail/docs/chatmail/admin_api.md). Implementation: `crates/chatmail-admin/`, wired from `chatmail-fed` HTTP listener.
 
+**CLI equivalents:** many admin resources have `madmail` subcommands — see [`../guide/cli/README.md`](../guide/cli/README.md) and the mapping table below. TDD parity: [14-cli-tools.md](14-cli-tools.md).
+
 ## Design goals
 
 1. **Single endpoint** — `POST {admin_path}` (default `/api/admin`)
@@ -35,7 +37,7 @@ Madmail-compatible JSON-RPC admin API. Full operator reference: [`context/madmai
 
 ## Resource catalogue (Madmail parity)
 
-| Resource | Methods | Status in chatmail-rs |
+| Resource | Methods | Status in madmail-v2 |
 |----------|---------|------------------------|
 | `/admin/status` | GET | Implemented (live IMAP session count + `ss` fallback on `__IMAP_PORT__` / `__IMAP_TLS_PORT__`). Legacy; prefer `/admin/overview` for the admin-web dashboard. |
 | `/admin/overview` | GET | Implemented — dashboard summary: status metrics, host `disk`, registration `tokens.total`, and full `settings` snapshot (one call for admin-web overview) |
@@ -110,7 +112,7 @@ Operator broadcast: deliver a **plain-text, unencrypted** RFC 5322 message into 
 
 Two storage areas:
 
-1. **User maildir** (`{state_dir}/mail/`) — Madmail `state_dir/messages/` + IMAP SQL; chatmail-rs uses maildir files.
+1. **User maildir** (`{state_dir}/mail/`) — Madmail `state_dir/messages/` + IMAP SQL; madmail-v2 uses maildir files.
 2. **Outbound retry queue** (`{state_dir}/remote_queue/`) — Madmail `target.queue`; failed federation deliveries are retried from disk (see [07-federation.md](07-federation.md)).
 
 | `action` | Body fields | Effect |
@@ -166,7 +168,7 @@ Run: `cargo test -p chatmail-admin`
 
 ## Public web UI (`www`)
 
-Madmail embeds `internal/endpoint/chatmail/www/` as the main site (index, docs, `/new`, `/qr`, static CSS/JS). chatmail-rs serves the same tree from `crates/chatmail-www` (source: `www-src/`, build-time, `rust-embed`).
+Madmail embeds `internal/endpoint/chatmail/www/` as the main site (index, docs, `/new`, `/qr`, static CSS/JS). madmail-v2 serves the same tree from `crates/chatmail-www` (source: `www-src/`, build-time, `rust-embed`).
 
 | Path | Purpose |
 |------|---------|
@@ -181,9 +183,30 @@ Mounted on the HTTP listener together with `/mxdeliv` and `/api/admin` (see `cra
 
 ## Web admin panel (Svelte)
 
-Madmail serves a separate SPA from `admin-web/` via `adminweb.go`. chatmail-rs embeds **`external/madmail-admin-web`** via `chatmail-admin-web` on the HTTP listener (same origin as `/api/admin`).
+Madmail serves a separate SPA from `admin-web/` via `adminweb.go`. madmail-v2 embeds **`external/madmail-admin-web`** via `chatmail-admin-web` on the HTTP listener (same origin as `/api/admin`).
 
 Push UI: overview card + services row — toggle (`auto`/`disable`), successful-notification count, `notifications.delta.chat` copy. See [23-push-notifications.md](23-push-notifications.md#admin-web-embedded-spa).
+
+## Admin API ↔ CLI mapping
+
+| Admin resource / setting | CLI command | Guide |
+|--------------------------|-------------|-------|
+| `/admin/reload` | `madmail reload` | [reload.md](../guide/cli/reload.md) |
+| `/admin/registration` | `madmail registration` | [registration.md](../guide/cli/registration.md) |
+| `/admin/federation/rules` | `madmail federation` | [federation.md](../guide/cli/federation.md) |
+| `/admin/dns` | `madmail endpoint-cache` | [endpoint-cache.md](../guide/cli/endpoint-cache.md) |
+| `/admin/blocklist` | `madmail blocklist` | [blocklist.md](../guide/cli/blocklist.md) |
+| `/admin/accounts` | `madmail accounts` | [accounts.md](../guide/cli/accounts.md) |
+| `/admin/services/push` | `madmail push` | [push.md](../guide/cli/push.md) |
+| `/admin/services/webimap` | `madmail webimap` | [webimap.md](../guide/cli/webimap.md) |
+| `/admin/services/websmtp` | `madmail websmtp` | [websmtp.md](../guide/cli/websmtp.md) |
+| `/admin/services/admin_web` | `madmail admin-web` | [admin-web.md](../guide/cli/admin-web.md) |
+| `/admin/settings/*` ports | `madmail port` | [port.md](../guide/cli/port.md) |
+| Message size settings | `madmail message-size` | [message-size.md](../guide/cli/message-size.md) |
+| `/admin/queue` purge | `madmail tasks run` | [tasks-run.md](../guide/cli/tasks-run.md) |
+| Bearer token | `madmail admin-token` | [admin-token.md](../guide/cli/admin-token.md) |
+
+Use `--json` on CLI for machine-readable output ([`json-output.md`](../guide/cli/json-output.md)).
 
 ## Implementation references
 

@@ -9,7 +9,7 @@ When you set up a chatmail server, you usually face one of these four common sit
 
 This guide explains the practical differences, recommended commands, and trade-offs for each case.
 
-## 1. IP-Only Server + Trusted Certificate (Recommended for most public relays)
+## 1. IP-Only Server + Trusted Certificate
 
 This is the most common production setup when you only have a public IP address (no domain name pointing at the server).
 
@@ -31,7 +31,7 @@ Replace `203.0.113.50` with your **public** IPv4 or IPv6 address.
 ### Pros
 - Users get a green lock in Delta Chat and browsers.
 - No need to buy or manage a domain name.
-- Very good for "stealth" or temporary relays.
+- Works for temporary relays or deployments where you do not want a domain name.
 
 ### Cons / Things to know
 - Certificates must be renewed frequently (the server handles this automatically via HTTP-01 on port 80).
@@ -71,9 +71,9 @@ madmail certificate self-signed
 - Delta Chat and browsers will show security warnings (users usually have to click "trust" or accept the certificate once).
 - Not suitable for public untrusted users.
 
-## 3. Domain Server + Trusted Certificate (Classic & Cleanest)
+## 3. Domain Server + Trusted Certificate
 
-This is the nicest experience when you own a domain name (`mail.example.org`, `chat.yourname.net`, etc.).
+This is the usual setup when you own a domain name (`mail.example.org`, `chat.yourname.net`, etc.).
 
 ### Recommended command
 
@@ -85,10 +85,10 @@ madmail install --simple --domain mail.example.org \
 (You can also use `--hostname` if you want the server to announce a different name.)
 
 ### Pros
-- Best user experience (green lock everywhere).
+- Browser-trusted TLS (padlock in clients that show it).
 - Certificates last 90 days and renew automatically.
-- Looks professional.
-- Works great with multiple domains on the same server.
+- Familiar hostname for users.
+- Supports multiple domains on the same server.
 
 ### Cons
 - You need to control DNS for the domain (or at least be able to point it at your IP).
@@ -106,14 +106,14 @@ madmail install --simple --domain mail.example.org
 The installer will fall back to generating a self-signed certificate for the domain.
 
 ### Pros
-- You can still use a nice domain name in addresses.
+- You can still use a custom domain name in addresses.
 - Simple if you're in a hurry.
 
 ### Cons
 - Same trust warnings as any self-signed setup.
 - You lose the main benefit of having a domain name.
 
-**Recommendation**: If you have a domain, almost always get a real certificate. It's not much extra work and dramatically improves the experience.
+**Recommendation**: If you have a domain, use a publicly trusted certificate when possible. Setup is usually modest and avoids client TLS warnings.
 
 ## How to Add or Change Certificates Later
 

@@ -1,6 +1,8 @@
 # Authentication & JIT Registration
 
-**Implementation:** `crates/chatmail-auth` (`jit`, `hash`, `validate`), `crates/chatmail-state::AuthCache`, wired from IMAP/SMTP/Web handlers.
+**Implementation:** `crates/chatmail-auth` (`jit`, `hash`, `validate`), `chatmail-state::AuthCache`, `jit_flights` (per-user login coalescing), wired from IMAP/SMTP/Web handlers.
+
+**Operator CLI:** [`../guide/cli/registration.md`](../guide/cli/registration.md) · [`registration-tokens.md`](../guide/cli/registration-tokens.md) · [`accounts.md`](../guide/cli/accounts.md) · [`blocklist.md`](../guide/cli/blocklist.md).
 
 ## JIT (Just-In-Time) Registration
 
@@ -48,7 +50,7 @@ Admin CLI block/unblock updates DB only; running server picks up blocklist on ne
 
 Static directives in `maddy.conf` (see [`13-configuration.md`](13-configuration.md)):
 
-| Directive | Purpose | chatmail-rs default |
+| Directive | Purpose | madmail-v2 default |
 |-----------|---------|---------------------|
 | `username_length` | Auto-generated localpart size (`/new`) | 8 |
 | `password_length` | Auto-generated password size (`/new`) | 16 |
@@ -59,7 +61,7 @@ Static directives in `maddy.conf` (see [`13-configuration.md`](13-configuration.
 - **`POST /new`**: generates `username_length` / `password_length` (clamped as above). Response includes `email`, `password`, and **`dclogin_url`** (server-built, same shape as `build_dclogin_link`).
 - **JIT (first IMAP/SMTP login)**: rejects accounts when localpart ∉ `[min, max]` or `password` shorter than `password_min_length` (`chatmail-auth::validate_localpart_and_password`). Existing accounts are not re-checked on login.
 
-Madmail example config uses `min_username_length 3`; chatmail-rs defaults to **8** to match typical Chatmail deployments.
+Madmail example config uses `min_username_length 3`; madmail-v2 defaults to **8** to match typical Chatmail deployments.
 
 ## dclogin / IP registration
 

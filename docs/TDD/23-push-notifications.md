@@ -2,10 +2,10 @@
 
 Delta Chat mobile wake-up via IMAP `SETMETADATA` device tokens and the central notification proxy at `https://notifications.delta.chat/notify`.
 
-**Crate:** `crates/chatmail-push/`  
-**IMAP:** `crates/chatmail-imap/` (`XDELTAPUSH`, `METADATA`, `/private/devicetoken`)  
+**Crate:** `crates/chatmail-push/` (`notifier`, `store`, `mode`, `enabled`, `stats`)  
+**IMAP:** `crates/chatmail-imap/` (`XDELTAPUSH`, `METADATA`, `/private/devicetoken`)
 **Admin:** `/admin/services/push`, `push` block in `/admin/status` and `/admin/overview`  
-**CLI:** `madmail push` (binary name is **`madmail`**, not `chatmail`)
+**CLI:** `madmail push` — guide: [`../guide/cli/push.md`](../guide/cli/push.md) (binary name is **`madmail`**, not `chatmail`)
 
 Reference: Dovecot/chatmaild `notifier.py`, cmdeploy `XDELTAPUSH` capability.
 
@@ -123,7 +123,9 @@ madmail push on       # force on (no circuit breaker)
 madmail push off      # default — no POSTs to notifications.delta.chat
 ```
 
-After changing mode, run **`madmail reload`** so IMAP capabilities match the DB.
+Per-subcommand docs: [`push-status.md`](../guide/cli/push-status.md), [`push-auto.md`](../guide/cli/push-auto.md), [`push-on.md`](../guide/cli/push-on.md), [`push-off.md`](../guide/cli/push-off.md).
+
+After changing mode, run **`madmail reload`** ([`reload.md`](../guide/cli/reload.md)) so IMAP capabilities match the DB.
 
 Implementation: `crates/chatmail/src/ctl/push.rs`, `chatmail-config::cli::PushCommand`.
 

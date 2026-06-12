@@ -79,7 +79,7 @@ More detail:
 
 ## Documentation
 
-Madmail includes comprehensive documentation organized by audience and purpose.
+Documentation is organized by audience and purpose.
 
 ### For Server Operators and End Users
 
@@ -87,16 +87,16 @@ Madmail includes comprehensive documentation organized by audience and purpose.
 
 ### For Developers and Contributors
 
-- **[Project Documentation](docs/project/README.md)** — A complete step-by-step technical tour of the architecture, crate structure, runtime wiring, data flows, build system, and contribution guidelines.
-- **[Technical Design Document (TDD)](docs/TDD/README.md)** — Authoritative, in-depth design specifications for every major component of the system.
+- **[Project Documentation](docs/project/README.md)** — Technical tour of architecture, crates, runtime wiring, data flows, build system, and contribution notes.
+- **[Technical Design Document (TDD)](docs/TDD/README.md)** — Design specifications for major components.
 - **[RFC Reference Library](docs/TDD/RFC/README.md)** — Collection of relevant protocol specifications (SMTP, IMAP, HTTP, TLS, TURN, etc.).
 
 ### Quick References
 
-- [Simple IP + ACME Installation](docs/install-simple-ip-acme.md) — Shortest path to a production relay with trusted TLS
+- [Simple IP + ACME Installation](docs/install-simple-ip-acme.md) — IP-based install with Let's Encrypt TLS
 - [Local Development Guide](docs/local-dev.md) — Developer setup, build, and testing workflow
 
-All documentation is maintained alongside the source code and kept up to date with the current implementation.
+Documentation lives in the repository alongside the source code.
 
 
 

@@ -2,7 +2,9 @@
 
 **Implementation:** `crates/chatmail-imap` (`server`, `session`, `connection_stats`). Mailbox backend: `chatmail-storage`. Hot limits and federation side effects: `chatmail-state`. Wired from `chatmail::supervisor`.
 
-This section documents **IMAP commands and extensions** as implemented in the reference codebases under `context/`, for use when designing **chatmail-rs**. It covers three layers:
+**Operator CLI:** [`../guide/cli/port.md`](../guide/cli/port.md) (IMAP ports) · [`push.md`](../guide/cli/push.md) (`XDELTAPUSH`).
+
+This section documents **IMAP commands and extensions** as implemented in the reference codebases under `context/`, for use when designing **madmail-v2**. It covers three layers:
 
 | Layer | Path | Role |
 |-------|------|------|
@@ -26,7 +28,7 @@ The Rust rewrite must support at minimum:
 - **APPEND** with **PGP enforcement** on submission paths
 - **Special-use** mailboxes (`\Inbox`, `\Sent`, etc.)
 - **XCHATMAIL** — client detects Chatmail servers
-- Optional: **COMPRESS=DEFLATE**, **CONDSTORE**, **XDELTAPUSH** (Dovecot/cmdeploy; **chatmail-rs** when push enabled — see [23-push-notifications.md](23-push-notifications.md))
+- Optional: **COMPRESS=DEFLATE**, **CONDSTORE**, **XDELTAPUSH** (Dovecot/cmdeploy; **madmail-v2** when push enabled — see [23-push-notifications.md](23-push-notifications.md))
 
 ---
 
@@ -97,7 +99,7 @@ The server uses **`github.com/foxcpp/go-imap`** (fork of emersion/go-imap). Stan
 | Capability | Impact on Delta Chat |
 |------------|---------------------|
 | `CONDSTORE` | Core skips server-side `\Seen` sync via `CHANGEDSINCE` |
-| `XDELTAPUSH` | Not on Madmail Go IMAP; **chatmail-rs** advertises when `__PUSH_MODE__` ≠ `off` |
+| `XDELTAPUSH` | Not on Madmail Go IMAP; **madmail-v2** advertises when `__PUSH_MODE__` ≠ `off` |
 
 ### Standard IMAP4rev1 commands (via go-imap-sql backend)
 
@@ -147,7 +149,7 @@ These map to `backend.User` / `backend.Mailbox` methods and are handled by **go-
 | Command | Notes |
 |---------|--------|
 | `SORT` / `THREAD` | Advertised; provided by go-imap-sortthread against backend |
-| `SETMETADATA` | Not on Madmail Go IMAP; Dovecot/cmdeploy + **chatmail-rs** (`/private/devicetoken`) |
+| `SETMETADATA` | Not on Madmail Go IMAP; Dovecot/cmdeploy + **madmail-v2** (`/private/devicetoken`) |
 | `SETQUOTA` | Explicitly rejected |
 
 ### Madmail-specific: QUOTA
@@ -210,7 +212,7 @@ Controlled by `__WEBIMAP_ENABLED__` in settings DB.
 
 ## Delta Chat IMAP Client (`context/core`)
 
-Delta Chat is an **IMAP client** (async-imap). It does not implement server commands; this section lists what **chatmail-rs must support** for real clients.
+Delta Chat is an **IMAP client** (async-imap). It does not implement server commands; this section lists what **madmail-v2 must support** for real clients.
 
 ### Module layout
 
@@ -347,7 +349,7 @@ Online tests exercise raw `SETMETADATA` / `GETMETADATA` on the dict socket (not 
 
 AGPL community code — **study for protocol design**, not a drop-in library (tied to `store`, `common::Server`, JMAP mail model).
 
-### Crate split (recommended pattern for chatmail-rs)
+### Crate split (recommended pattern for madmail-v2)
 
 | Crate | Path | Role |
 |-------|------|------|
@@ -382,7 +384,7 @@ From `imap-proto/src/parser/mod.rs` + `imap/src/op/mod.rs`:
 | `STATUS` | yes | Yes (UIDNEXT fallback) |
 | `FETCH`, `STORE`, `SEARCH` | yes | UID FETCH, UID STORE |
 | `COPY`, `MOVE`, `EXPUNGE` | yes | UID MOVE, CLOSE expunge |
-| `APPEND` | yes | Yes (+ PGP wrapper in chatmail-rs) |
+| `APPEND` | yes | Yes (+ PGP wrapper in madmail-v2) |
 | `IDLE` | yes | **Required** |
 | `ENABLE` | yes | CONDSTORE (if advertised) |
 | `GETQUOTA`, `GETQUOTAROOT` | yes | Yes |
@@ -404,10 +406,10 @@ From `imap-proto/src/parser/mod.rs` + `imap/src/op/mod.rs`:
 | `COMPRESS=DEFLATE` | Optional | Yes | Optional (`imap_zlib`) |
 | `METADATA` | Not Chatmail keys | GET TURN/Iroh | dict proxy |
 | `XCHATMAIL` | No | Yes | Yes |
-| `XDELTAPUSH` | Yes (chatmail-rs) | No | Yes |
+| `XDELTAPUSH` | Yes (madmail-v2) | No | Yes |
 | `IMAP4rev2` | Yes (greeting) | IMAP4rev1 | IMAP4rev1 |
 
-**Conclusion:** The **command checklist in this document (Madmail + Delta Chat client) is complete** for requirements. Stalwart implements a **superset** of commands; chatmail-rs must add **Chatmail-specific** extensions (METADATA keys, `XCHATMAIL`, PGP on APPEND, IDLE notify on deliver) on top of a Stalwart-like `imap-proto` + `op` layout.
+**Conclusion:** The **command checklist in this document (Madmail + Delta Chat client) is complete** for requirements. Stalwart implements a **superset** of commands; madmail-v2 must add **Chatmail-specific** extensions (METADATA keys, `XCHATMAIL`, PGP on APPEND, IDLE notify on deliver) on top of a Stalwart-like `imap-proto` + `op` layout.
 
 ### What to copy vs reimplement
 
@@ -420,11 +422,24 @@ From `imap-proto/src/parser/mod.rs` + `imap/src/op/mod.rs`:
 
 ### IDLE in Stalwart
 
-`op/idle.rs` + mailbox change notifications from storage layer. For chatmail-rs, mirror Madmail: **signal IDLE waiters after SMTP/`/mxdeliv`/APPEND commit** (see `go-imap-sql/delivery.go`).
+`op/idle.rs` + mailbox change notifications from storage layer. For madmail-v2, mirror Madmail: **signal IDLE waiters after SMTP/`/mxdeliv`/APPEND commit** (see `go-imap-sql/delivery.go`).
 
 ---
 
-## Rust implementation notes (`chatmail-rs`)
+## Rust implementation notes (`madmail-v2`)
+
+### `crates/chatmail-storage` — mailbox backend
+
+IMAP sessions use `AppState::mailbox_store` (`MailboxStore`):
+
+| Concern | Implementation |
+|---------|----------------|
+| Stable UIDs | `uidlist::UidListStore` — `chatmail-uidlist` file; UIDs never reused on delete |
+| Listing | `maildir_cache::MaildirListCache` — skip `readdir` when directory mtimes unchanged |
+| APPEND / delivery | `blob` + optional `cas` hardlink fan-out; `mail_fsync` / `blob_dedup` from config |
+| IDLE EXISTS | `list_mailbox_messages` after delivery; unsolicited updates in `session.rs` |
+
+See [`04-storage-layer.md`](04-storage-layer.md) for `StoragePolicy` and on-disk layout.
 
 ### `crates/chatmail-imap` — IDLE (implemented)
 
@@ -478,7 +493,7 @@ After rebuilding chatmail, Delta Chat should pass folder configure and enter **I
 ### Minimum viable server (Delta Chat parity with Madmail)
 
 1. **Session**: AUTH, SELECT, UID FETCH, UID STORE, UID MOVE, CLOSE, LIST, STATUS, IDLE.
-2. **Extensions**: MOVE, SPECIAL-USE, QUOTA (`GETQUOTA`/`GETQUOTAROOT`), METADATA GET (Chatmail keys), `XCHATMAIL`, **`XDELTAPUSH`** + `SETMETADATA /private/devicetoken` when push enabled (implemented in chatmail-rs; default **off**).
+2. **Extensions**: MOVE, SPECIAL-USE, QUOTA (`GETQUOTA`/`GETQUOTAROOT`), METADATA GET (Chatmail keys), `XCHATMAIL`, **`XDELTAPUSH`** + `SETMETADATA /private/devicetoken` when push enabled (implemented in madmail-v2; default **off**).
 3. **APPEND**: With PGP enforcement (mirror `encryptionWrapperUser`).
 4. **IDLE**: Unsolicited `EXISTS` on delivery (SMTP + `/mxdeliv` + local append) — **see table above**.
 5. **JIT**: Account/mailbox creation on first LOGIN (see `05-authentication.md`).
@@ -487,7 +502,7 @@ After rebuilding chatmail, Delta Chat should pass folder configure and enter **I
 
 - `COMPRESS=DEFLATE` (bandwidth)
 - `CONDSTORE` (multi-device seen sync)
-- ~~`SETMETADATA` + `XDELTAPUSH`~~ — **done** in chatmail-rs ([23-push-notifications.md](23-push-notifications.md))
+- ~~`SETMETADATA` + `XDELTAPUSH`~~ — **done** in madmail-v2 ([23-push-notifications.md](23-push-notifications.md))
 - `APPENDLIMIT` in STATUS (large attachment policy)
 
 ### Crate strategy

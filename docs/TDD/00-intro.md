@@ -1,12 +1,12 @@
 # Technical Design Document: Rust-based Chatmail Mailserver
 
 ## Project Name
-**chatmail-rs** (or `madmail-rs` / `rustmail` — TBD)
+**madmail-v2**
 
 ## Overview
-This document outlines the technical design for a complete, production-grade **Rust implementation** of a Chatmail-compatible mail server.
+This document outlines the technical design for a **Rust implementation** of a Chatmail-compatible mail server.
 
-Chatmail is a modern, privacy-first, federated email system designed primarily for **Delta Chat** users. It emphasizes:
+Chatmail is a privacy-oriented, federated email system for **Delta Chat** users. It emphasizes:
 - Automatic / JIT user registration
 - Strict **PGP-only** message policy
 - HTTP-based federation (`/mxdeliv`) with SMTP fallback
@@ -16,10 +16,10 @@ Chatmail is a modern, privacy-first, federated email system designed primarily f
 - Camouflage / stealth deployment options
 
 The goal of this Rust rewrite is to provide:
-- Memory safety and high performance (Tokio async runtime)
+- Memory safety and async I/O (Tokio)
 - Easier auditing and contribution (Rust ecosystem)
-- Native WebSocket + modern web stack support
-- Better cross-compilation and single-binary distribution
+- WebSocket support for WebIMAP and admin surfaces
+- Single-binary distribution and cross-compilation
 - Long-term maintainability
 
 ## Goals
@@ -29,7 +29,7 @@ The goal of this Rust rewrite is to provide:
 - **Admin API** (JSON-RPC style over single endpoint)
 - **WebIMAP** (REST + WebSocket) for web clients and Delta Chat desktop
 - Dynamic configuration via database (no restart for most changes)
-- Comprehensive **E2E test suite** using Delta Chat RPC client
+- **E2E tests** using Delta Chat RPC client where applicable
 - Support for **TURN** and **Iroh Relay**
 - **Quota** management, blocklist, federation policy (ACCEPT/REJECT)
 - **No-Log** mode and strict PGP enforcement
@@ -50,7 +50,7 @@ The goal of this Rust rewrite is to provide:
 3. **Database-backed dynamic config** (settings table)
 4. **Memory-first hot paths** (federation rules, quotas, endpoint cache in RAM + sync writes)
 5. **Strong defaults**: PGP-only, registration closed by default, No-Log off by default
-6. **Testability**: Excellent E2E coverage using real Delta Chat clients
+6. **Testability**: E2E tests using real Delta Chat clients where feasible
 
 ## Document Structure
 This TDD is organized into numbered sections:
@@ -81,7 +81,7 @@ Full index: [`CONTEXT.md`](CONTEXT.md). Paths are under `../../context/`.
 
 | Codebase | Use for this section |
 |----------|----------------------|
-| [madmail](../../context/madmail/) | **Primary target** — feature set chatmail-rs must match |
+| [madmail](../../context/madmail/) | **Primary target** — feature set madmail-v2 must match |
 | [cmrelay](../../context/cmrelay/) | Prior Rust/Python relay on Dovecot; useful for `/mxdeliv` and install layout |
 | [cmdeploy](../../context/cmdeploy/) | How Chatmail is deployed today (Postfix + Dovecot) and online test expectations |
 | [stalwart](../../context/stalwart/) | Modern Rust MTA design patterns (SMTP/IMAP split, async sessions) |
@@ -104,6 +104,6 @@ Core protocols this project implements. **Offline plain-text copies** live under
 | [3501](https://datatracker.ietf.org/doc/html/rfc3501) | IMAP4rev1 | [rfc3501.txt](RFC/rfc3501.txt) |
 
 ## Status
-This is a **living design document**. Sections will be expanded as implementation progresses.
+This design document is updated as implementation progresses. Sections will be expanded over time.
 
 **Initial Target**: Feature-complete MVP matching Madmail core functionality within 6–9 months (community driven).
