@@ -11,18 +11,16 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
 
-      - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
+      - name: Install cross
+        uses: taiki-e/install-action@v2
         with:
-          ndk-version: r26d
+          tool: cross
 
-      - name: Build
+      - name: Build with cross
+        run: cross build --release --target aarch64-linux-android
         env:
-          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: aarch64-linux-android21-clang
-        run: cargo build --release --target aarch64-linux-android
+          CROSS_NO_WARNINGS: 0
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
