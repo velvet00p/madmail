@@ -32,9 +32,10 @@ pub use external_store::{ExternalKey, ExternalStore, FsStore};
 pub use inbox::{list_inbox, InboxEntry};
 
 pub use blob::{
-    commit_mailbox_blob_from_tmp, delete_blob, deliver_local_messages, read_blob, read_blob_known,
-    read_blob_range_known, stream_append_direct_final_no_hash, stream_append_to_tmp, write_blob,
-    write_blob_mailbox, write_blob_mailbox_stream, DeliveryOutcome,
+    commit_mailbox_blob_from_tmp, delete_blob, deliver_local_messages,
+    never_delivery_batcher_coordinator_count, read_blob, read_blob_known, read_blob_range_known,
+    stream_append_direct_final_no_hash, stream_append_to_tmp, write_blob, write_blob_mailbox,
+    write_blob_mailbox_stream, DeliveryOutcome,
 };
 pub use cas::{hash_bytes, ContentStore};
 pub use maildir::{mailbox_exists, MailboxStore, MaildirPaths};

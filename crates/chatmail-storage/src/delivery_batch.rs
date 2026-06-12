@@ -47,6 +47,11 @@ impl DeliveryBatcher {
         }
     }
 
+    /// Active per-(user, mailbox) coordinators. Each entry owns a permanent background worker.
+    pub fn coordinator_count(&self) -> usize {
+        self.coordinators.len()
+    }
+
     pub async fn submit_for_never(&self, user: &str, mailbox: &str, pending: PendingDelivery) {
         let key = (user.to_string(), mailbox.to_string());
         let coord = self

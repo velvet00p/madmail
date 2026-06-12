@@ -39,6 +39,11 @@ fn never_batcher() -> &'static crate::delivery_batch::DeliveryBatcher {
     NEVER_DELIVERY_BATCHER.get_or_init(crate::delivery_batch::DeliveryBatcher::new)
 }
 
+/// Coordinator count for the process-wide Never-mode delivery batcher (integration probes).
+pub fn never_delivery_batcher_coordinator_count() -> usize {
+    never_batcher().coordinator_count()
+}
+
 /// Per-recipient result of a local fan-out delivery.
 #[derive(Debug, Default)]
 pub struct DeliveryOutcome {

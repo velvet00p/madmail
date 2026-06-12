@@ -5,6 +5,7 @@
 
 mod support;
 
+use std::io::Cursor;
 use std::sync::Arc;
 
 use chatmail_auth::AuthContext;
@@ -12,7 +13,8 @@ use chatmail_config::CredentialPolicy;
 use chatmail_state::AppState;
 use chatmail_storage::{
     delivery_batch::{DeliveryBatcher, PendingDelivery},
-    list_mailbox_messages, write_blob, FsyncMode, MailboxStore, StoragePolicy,
+    list_mailbox_messages, never_delivery_batcher_coordinator_count, write_blob,
+    write_blob_mailbox_stream, FsyncMode, MailboxStore, StoragePolicy,
 };
 use support::{create_user, deliver_message, spawn_mail_servers};
 
@@ -175,14 +177,17 @@ async fn probe_delivery_batcher_spawns_per_mailbox_workers() {
     // Let workers settle.
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
+    let coordinators = batcher.coordinator_count();
     let rss = rss_kib();
     eprintln!(
-        "delivery_batcher: submitted {N} unique mailboxes, RSS now {rss} KiB \
-         (each first submit spawns an infinite-loop tokio task)"
+        "delivery_batcher: submitted {N} unique mailboxes, coordinators={coordinators}, \
+         RSS now {rss} KiB (each first submit spawns an infinite-loop tokio task)"
     );
 
-    // Structural proof: reading the source, coordinators.len() would equal N.
-    // We can't access private fields; RSS + task spawn is the proxy.
+    assert_eq!(
+        coordinators, N,
+        "each first submit should create one permanent coordinator + worker"
+    );
 }
 
 /// Suspect 5: production `never_batcher()` path (`mail_fsync=never` + CAS, first blob per user).
@@ -199,24 +204,33 @@ async fn probe_never_cas_blob_path_uses_global_batcher() {
     );
 
     const N: usize = 120;
+    let coordinators_before = never_delivery_batcher_coordinator_count();
     let rss_before = rss_kib();
     for i in 0..N {
         let user = format!("never{i}@test");
         store.init_user_dir(&user).await.expect("init");
-        // Distinct payload → first-write CAS path → `never_batcher().submit_for_never`.
+        // Never-mode streaming commit → `finalize_from_tmp` → `never_batcher().submit_for_never`.
+        // (`write_blob` uses `put_if_absent` + `install_maildir_entry` and skips the batcher.)
         let body = format!("unique-body-{i}-{}", "x".repeat(256));
-        write_blob(&store, &user, &format!("msg-{i}"), body.as_bytes())
+        let body_len = body.len() as u64;
+        let mut reader = Cursor::new(body.into_bytes());
+        write_blob_mailbox_stream(&store, &user, "INBOX", &format!("msg-{i}"), &mut reader, body_len)
             .await
             .expect("write");
     }
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let coordinators_after = never_delivery_batcher_coordinator_count();
     let rss_after = rss_kib();
-    let delta = rss_delta_kib(rss_before, rss_after);
+    let coordinator_delta = coordinators_after.saturating_sub(coordinators_before);
+    let rss_delta = rss_delta_kib(rss_before, rss_after);
     eprintln!(
-        "never_cas_blob: {N} distinct first-writes, RSS +{delta} KiB \
-         (global DeliveryBatcher spawns one infinite worker per mailbox)"
+        "never_cas_blob: {N} distinct first-writes, coordinators +{coordinator_delta}, \
+         RSS +{rss_delta} KiB (global DeliveryBatcher spawns one infinite worker per mailbox)"
     );
-    assert!(delta >= 0);
+    assert_eq!(
+        coordinator_delta, N,
+        "each distinct (user, INBOX) first-write should register one batcher coordinator"
+    );
 }
 
 /// Suspect 6: sustained IMAP + delivery workload on a live mini-server.
