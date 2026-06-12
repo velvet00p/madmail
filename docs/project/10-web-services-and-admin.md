@@ -75,7 +75,7 @@ All successful responses are HTTP 200 with a JSON body containing `ok` or `error
 
 ### Admin Web SPA
 
-The beautiful operator dashboard lives in the `external/madmail-admin-web` SvelteKit app.
+The operator dashboard is the `external/madmail-admin-web` SvelteKit app, embedded via `chatmail-admin-web`.
 
 When you run `make build-with-admin-web`:
 1. The SPA is built to `external/madmail-admin-web/build`

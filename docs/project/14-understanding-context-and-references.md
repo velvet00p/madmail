@@ -20,12 +20,12 @@ The living Go implementation of Madmail (the maddy fork + Chatmail patches).
 
 - This is the behavior reference.
 - Its `internal/` directory (`endpoint/`, `auth/`, `storage/`, `target/remote/`, `federationtracker/`, etc.) is the direct ancestor of many `crates/chatmail-*` modules.
-- Its `docs/` directory (especially `chatmail/` and `internals/`) is still the best place to read the original design rationale.
+- Its `docs/` directory (especially `chatmail/` and `internals/`) is the primary reference for original design rationale.
 - When a Rust implementation differs in a subtle way, the Go code + its tests are the tie-breaker.
 
 **`context/stalwart/`**
 
-A full-featured, modern, async Rust email server (SMTP + IMAP + JMAP + more).
+An async Rust email server (SMTP + IMAP + JMAP + more), kept as a protocol reference.
 
 - Not used at runtime.
 - Used as "what does a complete, correct implementation of these protocols look like in Rust in 2025/2026?"
@@ -73,7 +73,7 @@ See `external/README.md` and the Makefile targets `build-admin-web` / `build-wit
 
 ## Why Not Vendor Everything or Use Cargo Dependencies?
 
-- The Go Madmail tree is enormous and has its own build system, tests, and docs. Vendoring the whole thing as a Rust dependency would be insane.
+- The Go Madmail tree is large and has its own build system, tests, and docs. Vendoring the whole tree as a Rust dependency is impractical.
 - Stalwart, iroh, webrtc-rs, deltachat-core are all actively developed upstream. We want to track them and study them without forcing their exact versions into our Cargo workspace.
 - The admin web is intentionally a separate frontend project (different language, different release cadence).
 

@@ -50,7 +50,7 @@ Make sure the directory is readable by the user the `madmail` service runs as (u
 
 ## Getting Started with Customization
 
-The easiest way to begin is:
+A typical starting workflow is:
 
 1. Create your `www_dir` (for example `/var/lib/maddy/www`).
 2. Copy the default files you want to customize from the server's built-in assets.
@@ -82,7 +82,7 @@ https://your-server/docs/
 
 This documentation is multi-language and includes a guide specifically about HTML customization (often reachable at a path like `/docs/custom-html`).
 
-This built-in guide is usually the most accurate and up-to-date reference for exactly which files you can override and any special features available.
+This built-in guide matches the running server version and lists which files you can override and any special features available.
 
 ## Security Considerations
 
@@ -111,7 +111,7 @@ Users may need to do a hard refresh (Ctrl+Shift+R or Cmd+Shift+R) in their brows
 
 ## Further Reading
 
-The best reference for customization is the guide served directly by your own server at `/docs/custom-html` (or the equivalent path). It is always available and kept in sync with the version of madmail you are running.
+The reference shipped with your running server is at `/docs/custom-html` (or the equivalent path). It matches the madmail version you have installed.
 
 You can also explore the `www-src/` directory in the source code to see the default structure and templates.
 

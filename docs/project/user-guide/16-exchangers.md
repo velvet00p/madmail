@@ -1,6 +1,6 @@
 # Exchangers (Push-Pull and Pull-Pull)
 
-The Exchangers feature (available in the admin panel and via CLI) provides a more powerful way to exchange mail with another server when direct federation is difficult or not possible.
+The Exchangers feature (available in the admin panel and via CLI) provides an alternate pull-based path to exchange mail with another server when direct federation is difficult or not possible.
 
 This is especially useful in restricted or censored networks.
 
@@ -100,7 +100,7 @@ If an exchanger stops polling, you will see it in the interface and can investig
 
 Endpoint rewrite (the simpler "push-push" feature) is often enough for basic redirection.
 
-The full Exchangers system is more powerful because it supports:
+The full Exchangers system adds capabilities such as:
 - Bidirectional exchange
 - Scheduled pulling
 - Better monitoring and control

@@ -74,7 +74,7 @@ Do **not** create a new crate just to split a 400-line file.
 
 ## Getting Help / Asking Questions
 
-- The existing TDD and plan documents are the best written record.
+- The existing TDD and plan documents are the primary written record.
 - The Go Madmail source + its docs are the behavioral spec.
 - The integration tests in `tests/` are executable documentation of "what good looks like."
 - For real-time discussion, the project uses whatever chat channels the team has (often Delta Chat itself on a madmail server).

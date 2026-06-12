@@ -87,7 +87,7 @@ For a destination domain the router may:
 - Fall back to `https://domain/.well-known/chatmail` or similar discovery (if implemented).
 - Finally fall back to classic MX + SMTP.
 
-This is one of the places where chatmail federation is more robust and faster than pure SMTP.
+This is one of the places where HTTP federation can reduce latency and retries compared with SMTP-only delivery.
 
 ## The `X-Mail-From` Header (Important Detail)
 

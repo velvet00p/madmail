@@ -139,8 +139,8 @@ Normative protocol specs used across these crates are archived under [`RFC/`](RF
 
 | Layer              | Technology                          | Rationale |
 |--------------------|-------------------------------------|---------|
-| Async Runtime      | Tokio + tracing                     | Industry standard |
-| HTTP + WebSocket   | Axum + tower                        | Excellent ergonomics, WebSocket support |
+| Async Runtime      | Tokio + tracing                     | Widely used in Rust servers |
+| HTTP + WebSocket   | Axum + tower                        | WebSocket support; familiar Rust HTTP stack |
 | TLS                | rustls + tokio-rustls               | Memory safe, modern |
 | Database           | SQLx (compile-time checked) or Diesel | Async friendly |
 | SMTP Server        | Study `context/stalwart/crates/smtp` + `smtp-proto`; implement Chatmail-specific inbound/submission | Stalwart is full MTA; chatmail-rs needs PGP + federation + JIT |

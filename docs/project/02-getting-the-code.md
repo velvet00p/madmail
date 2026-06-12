@@ -50,7 +50,7 @@ madmailv2/                          # repo root (this directory)
 │   └── README.md
 ├── docs/                           # All documentation (you are here)
 │   ├── project/                    # ← This step-by-step human guide
-│   ├── TDD/                        # Technical Design Document (authoritative deep dives)
+│   ├── TDD/                        # Technical Design Document (per-topic deep dives)
 │   ├── plans/                      # Historical implementation tickets (b1–b9, p1, t1)
 │   ├── local-dev.md
 │   ├── install-simple-ip-acme.md
@@ -80,9 +80,9 @@ This is where 95% of active development happens for the v2 server.
 These are **large**, often read-only or infrequently touched trees.
 
 - `context/madmail/` — the living Go implementation that this Rust version aims to match in behavior.
-  - Has excellent docs under `context/madmail/docs/`.
+  - Has detailed docs under `context/madmail/docs/`.
   - Its `internal/` directory is the spiritual ancestor of many `crates/chatmail-*` modules.
-- `context/stalwart/` — a full-featured modern Rust email server. Used for ideas around protocol handling and as a "what a complete implementation looks like".
+- `context/stalwart/` — a Rust email server (SMTP, IMAP, JMAP, and more). Used as a reference for protocol handling patterns.
 - `context/iroh/`, `context/webrtc/`, `context/rtc/` — the p2p and media stacks we integrate or supervise.
 - `context/core/` — Delta Chat core (for E2E tests and understanding the client side).
 - `context/cmlxc/`, `context/cmdeploy/` — testing and deployment tooling.

@@ -47,7 +47,7 @@ This fallback means that chatmail users can still reach people on almost any ema
 
 The design is pragmatic:
 
-- Direct HTTPS federation between chatmail servers = fast, reliable, good metadata protection.
+- Direct HTTPS federation between chatmail servers = lower latency than SMTP-only paths and less routing metadata exposure.
 - Classic SMTP fallback = maximum compatibility with the rest of the email world.
 
 Users and operators usually don’t have to think about which path is being used. The servers negotiate it automatically.
@@ -78,7 +78,7 @@ If deliveries to a particular domain keep failing, the admin can sometimes add a
 
 ## What Users Experience
 
-For normal users on Delta Chat the experience is seamless:
+For normal users on Delta Chat, federation is mostly invisible:
 
 - They just type an address and send.
 - If the recipient is on another chatmail server, the message usually arrives very quickly.
@@ -104,11 +104,11 @@ In many cases the server will prefer it automatically once it has successfully u
 
 **“What if the other server is not a chatmail server?”**
 
-It will usually fall back to normal SMTP. Delivery may be slower and you lose some of the nice properties, but it still works for basic email.
+It will usually fall back to normal SMTP. Delivery may be slower and you lose HTTP-first federation behaviour, but basic email delivery can still work.
 
 **“Do I need special firewall rules for federation?”**
 
-For the best experience you want outbound HTTPS (443) to be reliable. The SMTP fallback uses port 25 outbound. Most servers already allow this.
+For reliable chatmail-to-chatmail delivery, outbound HTTPS (443) should work. The SMTP fallback uses port 25 outbound. Many networks already allow this.
 
 ## Summary
 
@@ -119,7 +119,7 @@ Sending and receiving on a chatmail server works like this:
 - The strong encryption rules are enforced on both ends.
 - Most of the complexity is hidden from users.
 
-This hybrid approach gives you both excellent performance inside the chatmail network and broad compatibility with the rest of the world.
+This hybrid approach keeps HTTP-first delivery between chatmail relays while retaining SMTP fallback for the wider Internet.
 
 ## Next
 

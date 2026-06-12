@@ -96,6 +96,6 @@ When implementing a feature, update the corresponding section and note the ownin
 
 ## Status
 
-Living design document. Core protocol sections (SMTP, IMAP, federation, admin, storage, auth, proxies, push) map to implemented crates. [04-storage-layer.md](04-storage-layer.md) documents Maildir + CAS blobs, `chatmail-uidlist`, and `mail_fsync`/`blob_dedup` policy. [23-push-notifications.md](23-push-notifications.md) documents XDELTAPUSH + `notifications.delta.chat` (default off). [22-bandwidth-monitoring.md](22-bandwidth-monitoring.md) is specification-only until `chatmail-state` gains counters.
+Design document updated as implementation progresses. Core protocol sections (SMTP, IMAP, federation, admin, storage, auth, proxies, push) map to implemented crates. [04-storage-layer.md](04-storage-layer.md) documents Maildir + CAS blobs, `chatmail-uidlist`, and `mail_fsync`/`blob_dedup` policy. [23-push-notifications.md](23-push-notifications.md) documents XDELTAPUSH + `notifications.delta.chat` (default off). [22-bandwidth-monitoring.md](22-bandwidth-monitoring.md) is specification-only until `chatmail-state` gains counters.
 
-**Target**: Feature parity with Madmail (Go) with Rust workspace ergonomics and safety.
+**Target**: Feature parity with Madmail (Go), implemented as a Rust workspace.

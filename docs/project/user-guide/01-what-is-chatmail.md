@@ -2,7 +2,7 @@
 
 **Chatmail** is the name of the protocol for doing secure, private chat using email.
 
-Delta Chat uses this protocol. Instead of building yet another closed messenger, Delta Chat turns normal email (IMAP + SMTP) into a fast, encrypted messaging experience — but it works best when both sides use a proper **chatmail relay**.
+Delta Chat uses this protocol. Instead of building yet another closed messenger, Delta Chat turns normal email (IMAP + SMTP) into an encrypted messaging experience — with the intended feature set when both sides use a **chatmail relay**.
 
 ## Features
 
@@ -34,9 +34,9 @@ In other words: madmail is a **chatmail relay server**. It is not a general-purp
 
 Chatmail relays are intentionally "dumb" — they keep very little long-term state about users. Accounts exist mainly to receive encrypted messages and to allow sending. There is no social graph, no permanent user profiles, and data is cleaned up regularly.
 
-Delta Chat is now a **relay-based** system. While it can technically work with any email server, it delivers the best experience (instant push, reliable calls, good metadata protection, easy onboarding) when users are on a proper chatmail relay.
+Delta Chat is now a **relay-based** system. It can work with generic email servers, but features such as push, call setup, metadata discovery, and JIT onboarding depend on chatmail relay behaviour.
 
-Other ways to run a chatmail relay exist (for example setups based on cmdeploy with Dovecot + Postfix), but madmail is currently the most popular and complete implementation.
+Other chatmail relay stacks exist (for example cmdeploy with Dovecot + Postfix). **madmail** (Go Madmail and this Rust port) is one implementation; choose based on your deployment constraints, not on marketing claims.
 
 ## The Big Ideas Behind Chatmail Relays
 

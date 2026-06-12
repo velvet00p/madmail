@@ -1,6 +1,6 @@
 # Project Documentation — madmailv2 / chatmail-rs
 
-This directory contains a **step-by-step, human-friendly guide** to understanding the entire madmailv2 project (also known as chatmail-rs).
+This directory contains a **step-by-step guide** to the madmailv2 project (also known as chatmail-rs).
 
 Its goal is to help you (a developer, reviewer, operator, or curious human) build a mental model of the codebase, architecture, data flows, build system, testing, and how everything fits together — without having to read thousands of lines of code first.
 
@@ -51,8 +51,8 @@ The two tracks deliberately complement each other.
 ## Relationship to Other Documentation
 
 - **User & Operator Guides** (`docs/project/user-guide/`) — Practical documentation for humans running or using the servers (modeled directly on `context/madmail/docs/chatmail/`).
-- **TDD/** (`docs/TDD/`) — The authoritative **Technical Design Document**. Deep dives per topic (SMTP, storage, security, etc.).
-- **plans/** (`docs/plans/b1/`, `b2/`, ...) — Historical implementation steps (one `.md` per small ticket). Great for "why is this code like this?" archaeology.
+- **TDD/** (`docs/TDD/`) — The **Technical Design Document**. Per-topic design notes (SMTP, storage, security, etc.).
+- **plans/** (`docs/plans/b1/`, `b2/`, ...) — Historical implementation steps (one `.md` per small ticket). Useful when tracing "why is this code like this?"
 - **context/madmail/docs/** — The original Go Madmail implementation docs. Use for behavior parity and "how did it work before?"
 - Root `Makefile` + `scripts/` — The practical build/deploy surface.
 - `docs/local-dev.md` and `docs/install-simple-ip-acme.md` — Short, task-focused operator cheat sheets.
@@ -89,4 +89,4 @@ Start here: **[01-introduction.md](./01-introduction.md)**
 
 ---
 
-*This documentation set was created to make the project understandable to humans. It builds on (and links to) the excellent existing TDD and plan artifacts rather than duplicating them.*
+*This documentation set explains the project for operators and contributors. It links to the existing TDD and plan artifacts rather than duplicating them.*

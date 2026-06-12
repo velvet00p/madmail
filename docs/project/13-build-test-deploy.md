@@ -34,7 +34,7 @@ The static build is the one you usually `scp` to production servers.
 - `make test-unit`, `make test`
 - `make test-e2e` — integration tests (builds first)
 - `make test-turn`, `make test-imap`, `make test-maintenance`
-- `make test-deltachat` — full Delta Chat core E2E via incus + cmlxc (heavy but authoritative)
+- `make test-deltachat` — full Delta Chat core E2E via incus + cmlxc (heavy; closest to real client behaviour)
 - `make test-dclogin` — relay-ping against two real accounts (requires DCLOGIN1/2 in .env)
 
 ### Deploy
@@ -82,7 +82,7 @@ This is the artifact that gets signed and `scp`'d in production deploys.
 4. **Throughput (T1)** — special benchmark comparing madmail (Go) vs madmailv2 (Rust) under load
 5. **Manual / relay-ping** — `make test-dclogin` against two real accounts on test servers
 
-The E2E suite is the ultimate source of truth for "does this still work like a chatmail server should?"
+The E2E suite is the main integration check for "does this still work like a chatmail server should?"
 
 ## Continuous Integration (implied)
 

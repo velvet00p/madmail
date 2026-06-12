@@ -29,8 +29,8 @@
 Per-user mailboxes may also use subfolders (e.g. `folders/DeltaChat/cur|new|tmp`) for IMAP `LIST` / MVBOX.
 
 **Why this model?**
-- Extremely fast appends (write file + optional fsync, or hardlink from CAS).
-- Excellent cacheability by OS page cache.
+- Fast appends (write file + optional fsync, or hardlink from CAS).
+- Good cacheability via the OS page cache.
 - `mail_fsync` / `blob_dedup` tunables match Dovecot relay throughput knobs.
 - Multi-recipient fan-out can **link** one canonical blob instead of copying bytes.
 - Message bodies are **never** stored in the main SQL database.
@@ -116,7 +116,7 @@ This allows very fast user provisioning under high load.
 - A background flusher task runs every **30 seconds** (or configurable) and does batch UPSERTs to the database.
 - On graceful shutdown, force flush everything.
 
-This pattern dramatically reduces database write pressure.
+This pattern reduces database write pressure compared with per-message SQL writes.
 
 ## 3. Database Role (Reduced)
 
@@ -149,7 +149,7 @@ The SQL database (SQLite or PostgreSQL) is used for:
 - Implement a `PersistenceManager` actor/task that handles periodic flushing.
 - On startup, have a clear "hydration" phase with progress logging.
 
-This design moves the system much closer to how high-performance mail servers (Postfix + Dovecot) operate while keeping the rich admin/federation features of Chatmail.
+This design follows patterns used by traditional mail stacks (Postfix + Dovecot) while keeping chatmail's admin and federation features.
 
 ## Implementation references
 
