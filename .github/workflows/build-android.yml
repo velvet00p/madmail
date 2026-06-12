@@ -1,0 +1,30 @@
+name: Build Android ARM64
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install Android NDK
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          cargo install cross
+
+      - name: Build for aarch64-linux-android
+        run: |
+          cross build --release --target aarch64-linux-android
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: madmail-android-arm64
+          path: target/aarch64-linux-android/release/madmail
