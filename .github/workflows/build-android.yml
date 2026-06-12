@@ -11,16 +11,27 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cross
-        uses: taiki-e/install-action@v2
         with:
-          tool: cross
+          targets: aarch64-linux-android
 
-      - name: Build with cross
-        run: cross build --release --target aarch64-linux-android
+      - name: Find NDK
+        id: ndk
+        run: |
+          NDK_VERSION=$(ls /usr/local/lib/android/sdk/ndk/ | sort -V | tail -1)
+          NDK_PATH="/usr/local/lib/android/sdk/ndk/$NDK_VERSION"
+          TOOLCHAIN="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "toolchain=$TOOLCHAIN" >> $GITHUB_OUTPUT
+          echo "Found NDK: $NDK_VERSION"
+          ls $TOOLCHAIN | grep aarch64
+
+      - name: Build
         env:
-          CROSS_NO_WARNINGS: 0
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.ndk.outputs.toolchain }}/aarch64-linux-android21-clang
+          CC_aarch64_linux_android: ${{ steps.ndk.outputs.toolchain }}/aarch64-linux-android21-clang
+          AR_aarch64_linux_android: ${{ steps.ndk.outputs.toolchain }}/llvm-ar
+          RANLIB_aarch64_linux_android: ${{ steps.ndk.outputs.toolchain }}/llvm-ranlib
+          OPENSSL_STATIC: 1
+        run: cargo build --release --target aarch64-linux-android
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
